@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-cream: #f6f1e6;
+  --color-ink: #111111;
+  --color-blue: #304ffe;
+  --color-lime: #c6ff00;
+  --color-orange: #ff5a1f;
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-display: "Arial Black", "Arial Narrow", Arial, sans-serif;
+  --shadow-brutal: 4px 4px 0 #111111;
+  --shadow-brutal-sm: 2px 2px 0 #111111;
+  --shadow-brutal-lg: 7px 7px 0 #111111;
+  --shadow-brutal-xl: 12px 12px 0 #111111;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #f6f1e6;
+  color: #111111;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  outline-color: #304ffe;
+  outline-offset: 3px;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: #c6ff00;
+  color: #111111;
+}
+
+.font-display {
+  font-family: "Arial Black", "Arial Narrow", Arial, sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.055em;
+}
+
+.font-editorial {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 700;
+}
+
+.page-shell {
+  margin-inline: auto;
+  max-width: 1280px;
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .page-shell {
+    padding-inline: 1.5rem;
+  }
+}
+
+.field {
+  width: 100%;
+  border: 2px solid #111111;
+  background: #ffffff;
+  padding: 0.8rem 0.9rem;
+  font-size: 0.875rem;
+  box-shadow: 3px 3px 0 #111111;
+}
+
+.field:focus {
+  border-color: #304ffe;
+}
+
+.label {
+  margin-bottom: 0.5rem;
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.dot-grid {
+  background-image: radial-gradient(#111111 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.ticker {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ticker > div {
+  display: inline-block;
+  min-width: max-content;
+  animation: ticker 22s linear infinite;
+}
+
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-8px) rotate(-1deg); }
+}
+
+.float-card {
+  animation: float 4s ease-in-out infinite;
+}
