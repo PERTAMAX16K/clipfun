@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { CampaignVisual } from "@/components/campaign-visual";
-import { useDemo } from "@/components/demo-provider";
+import { useApi, useApiMutation } from "@/lib/hooks/use-api";
+import { usePrivy } from "@privy-io/react-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -34,8 +35,13 @@ const platformIcons = {
 export default function CampaignDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { state, activeUser, submissions, openLogin } = useDemo();
-  const campaign = state.campaigns.find((item) => item.id === params.id);
+  const { data: currentUser } = useApi<any>("/api/users/me");
+  const { data: allCampaigns } = useApi<any[]>("/api/campaigns");
+  const { mutate: postSubmission } = useApiMutation<any>();
+  const { login } = usePrivy();
+  
+  const activeUser = currentUser;
+  const campaign = (allCampaigns || []).find((item) => item.id === params.id);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [platform, setPlatform] = useState<SocialProvider>("tiktok");
   const [url, setUrl] = useState("");
@@ -82,9 +88,12 @@ export default function CampaignDetailPage() {
     }
     setLoading(true);
     try {
-      await submissions.createSubmission(campaignId, platform, url);
+      await postSubmission("/api/submissions", {
+        method: "POST",
+        body: { campaignId, platform, postUrl: url }
+      });
       setSuccess(true);
-    } catch (submissionError) {
+    } catch (submissionError: any) {
       setError(
         submissionError instanceof Error
           ? submissionError.message
@@ -128,9 +137,21 @@ export default function CampaignDetailPage() {
 
             <div className="mt-10 border-t-2 border-ink pt-9">
               <h2 className="font-display text-3xl uppercase">The brief</h2>
-              <p className="mt-4 max-w-3xl text-base leading-8 text-ink/70">
+              <p className="mt-4 max-w-3xl text-base leading-8 text-ink/70 whitespace-pre-wrap">
                 {campaign.brief}
               </p>
+              {campaign.referenceAttachment && (
+                <div className="mt-5">
+                  <a
+                    href={campaign.referenceAttachment}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 border-2 border-ink bg-lime px-4 py-2 text-sm font-black uppercase hover:bg-white"
+                  >
+                    View Reference Attachment
+                  </a>
+                </div>
+              )}
             </div>
 
             <div className="mt-10 grid gap-6 md:grid-cols-2">
@@ -139,7 +160,7 @@ export default function CampaignDetailPage() {
                   <Check className="text-blue" /> Must have
                 </h3>
                 <ul className="space-y-4">
-                  {campaign.requirements.map((item) => (
+                  {campaign.requirements.map((item: string) => (
                     <li key={item} className="flex gap-3 text-sm leading-6">
                       <span className="mt-2 h-2 w-2 shrink-0 bg-lime outline outline-1 outline-ink" />
                       {item}
@@ -152,7 +173,7 @@ export default function CampaignDetailPage() {
                   Keep it clean
                 </h3>
                 <ul className="space-y-4">
-                  {campaign.prohibited.map((item) => (
+                  {campaign.prohibited.map((item: string) => (
                     <li key={item} className="flex gap-3 text-sm leading-6">
                       <span className="mt-2 h-2 w-2 shrink-0 bg-white" />
                       {item}
@@ -192,7 +213,7 @@ export default function CampaignDetailPage() {
                 </div>
               </div>
               <div className="p-6">
-                <div className="mb-5 flex items-center gap-3">
+                <Link href={`/profile/${campaign.brandId}`} className="mb-5 flex items-center gap-3 hover:underline">
                   <span className="grid h-11 w-11 place-items-center border border-ink bg-cream text-xs font-black">
                     {campaign.brandAvatar}
                   </span>
@@ -203,7 +224,7 @@ export default function CampaignDetailPage() {
                       Verified brand
                     </p>
                   </div>
-                </div>
+                </Link>
 
                 <div className="mb-5 flex items-center justify-between border-2 border-dashed border-ink bg-cream p-3">
                   <div>
@@ -233,7 +254,7 @@ export default function CampaignDetailPage() {
                   onClick={() =>
                     activeUser?.role === "user"
                       ? setSubmitOpen(true)
-                      : openLogin()
+                      : login()
                   }
                   disabled={campaign.status !== "OPEN" || activeUser?.role === "admin"}
                 >

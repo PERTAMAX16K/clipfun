@@ -3,21 +3,22 @@
 import { Search, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CampaignCard } from "@/components/campaign-card";
-import { useDemo } from "@/components/demo-provider";
+import { useApi } from "@/lib/hooks/use-api";
+import type { Campaign } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const categories = ["All", "Web3", "Food & Drink", "Gaming", "Lifestyle"];
 
 export default function ExplorePage() {
-  const { state } = useDemo();
+  const { data: allCampaigns, isLoading } = useApi<Campaign[]>("/api/campaigns");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [platform, setPlatform] = useState("all");
 
   const campaigns = useMemo(
     () =>
-      state.campaigns.filter((campaign) => {
+      (allCampaigns || []).filter((campaign) => {
         const matchesSearch =
           campaign.title.toLowerCase().includes(search.toLowerCase()) ||
           campaign.brandName.toLowerCase().includes(search.toLowerCase());
@@ -29,7 +30,7 @@ export default function ExplorePage() {
           campaign.platform === platform;
         return campaign.status === "OPEN" && matchesSearch && matchesCategory && matchesPlatform;
       }),
-    [state.campaigns, search, category, platform],
+    [allCampaigns, search, category, platform],
   );
 
   return (
@@ -111,7 +112,11 @@ export default function ExplorePage() {
       </section>
 
       <section className="page-shell min-h-[550px] py-12">
-        {campaigns.length > 0 ? (
+        {isLoading ? (
+          <div className="grid min-h-80 place-items-center border-2 border-ink bg-white p-8">
+            <p className="font-display text-4xl uppercase animate-pulse">Loading briefs...</p>
+          </div>
+        ) : campaigns.length > 0 ? (
           <div className="grid gap-7 md:grid-cols-2 lg:grid-cols-3">
             {campaigns.map((campaign) => (
               <CampaignCard key={campaign.id} campaign={campaign} />

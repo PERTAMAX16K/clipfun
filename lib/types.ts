@@ -46,6 +46,7 @@ export interface Campaign {
   prohibited: string[];
   category: string;
   platform: SocialProvider | "all";
+  referenceAttachment?: string;
   rewardPerSubmission: number;
   maxWinners: number;
   paidWinners: number;
@@ -56,6 +57,7 @@ export interface Campaign {
   visual: "blue" | "orange" | "lime" | "purple";
   createdAt: string;
   fundingTxHash?: string;
+  onchainCampaignId?: number;
 }
 
 export interface Submission {
@@ -114,6 +116,7 @@ export interface CampaignDraft {
   prohibited: string[];
   category: string;
   platform: Campaign["platform"];
+  referenceAttachment?: string;
   rewardPerSubmission: number;
   maxWinners: number;
   deadline: string;

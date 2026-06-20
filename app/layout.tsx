@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "@/app/globals.css";
 import { AppProviders } from "@/app/providers";
-import { DemoProvider } from "@/components/demo-provider";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
@@ -15,14 +14,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <AppProviders>
-          <DemoProvider>
-            <SiteHeader />
-            <main>{children}</main>
-            <SiteFooter />
-          </DemoProvider>
+          <SiteHeader />
+          <main>{children}</main>
+          <SiteFooter />
         </AppProviders>
       </body>
     </html>

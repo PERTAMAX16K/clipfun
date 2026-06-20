@@ -12,8 +12,9 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { useState } from "react";
-import { useDemo } from "@/components/demo-provider";
+import { useState, useEffect } from "react";
+import { usePrivy } from "@privy-io/react-auth";
+import { useApi } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -41,15 +42,28 @@ const adminLinks = [
 export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
-  const {
-    activeUser,
-    auth,
-    loginOpen,
-    openLogin,
-    closeLogin,
-  } = useDemo();
+  const { login, logout, linkWallet, authenticated, getAccessToken } = usePrivy();
+  const { data: activeUser, error, mutate } = useApi<any>("/api/users/me");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    if (authenticated && error?.status === 404) {
+      (async () => {
+        try {
+          const token = await getAccessToken();
+          if (!token) return;
+          await fetch("/api/auth/sync", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          mutate();
+        } catch (err) {
+          console.error("Failed to sync auth:", err);
+        }
+      })();
+    }
+  }, [authenticated, error, getAccessToken, mutate]);
 
   const isAdminArea = pathname.startsWith("/admin");
   const links =
@@ -60,7 +74,7 @@ export function SiteHeader() {
         : publicLinks;
 
   async function signOut() {
-    await auth.signOut();
+    await logout();
     setAccountOpen(false);
     router.push("/");
   }
@@ -125,7 +139,7 @@ export function SiteHeader() {
           <div className="relative ml-auto hidden items-center gap-3 sm:flex">
             {!activeUser ? (
               <>
-                <Button variant="ghost" onClick={openLogin}>
+                <Button variant="ghost" onClick={login}>
                   Sign in
                 </Button>
                 <Button asChild>
@@ -197,14 +211,22 @@ export function SiteHeader() {
                     <CircleUserRound size={14} />
                     {activeUser.role === "admin"
                       ? "Open marketplace"
-                      : "Profile & social accounts"}
+                      : "Private dashboard"}
+                  </Link>
+                  <Link
+                    href={`/profile/${activeUser.id}`}
+                    onClick={() => setAccountOpen(false)}
+                    className="flex items-center gap-2 p-2 text-[10px] font-black uppercase hover:bg-cream"
+                  >
+                    <CircleUserRound size={14} />
+                    Public profile
                   </Link>
                   <div className="flex items-center gap-2 p-2 text-[10px] font-black uppercase">
                     <WalletCards size={14} /> {shortAddress(activeUser.walletAddress)}
                   </div>
                   <button
                     onClick={() => {
-                      auth.linkWallet();
+                      linkWallet();
                       setAccountOpen(false);
                     }}
                     className="flex w-full items-center gap-2 p-2 text-[10px] font-black uppercase text-blue hover:bg-cream"
@@ -215,9 +237,9 @@ export function SiteHeader() {
                 <div className="border-t border-ink/20 pt-2">
                   <button
                     onClick={async () => {
-                      await auth.signOut();
+                      await logout();
                       setAccountOpen(false);
-                      openLogin();
+                      login();
                     }}
                     className="flex w-full items-center gap-2 p-2 text-[10px] font-black uppercase text-blue hover:bg-cream"
                   >
@@ -279,7 +301,7 @@ export function SiteHeader() {
               className="mt-5 w-full"
               onClick={() => {
                 setMobileOpen(false);
-                openLogin();
+                login();
               }}
             >
               Sign in
@@ -312,29 +334,6 @@ export function SiteHeader() {
         </div>
       )}
 
-      <Modal
-        open={loginOpen}
-        onClose={closeLogin}
-        eyebrow="Privy configuration"
-        title="Add your App ID"
-      >
-        <div className="border-2 border-ink bg-lime/30 p-5 text-sm leading-6">
-          Privy sudah terpasang, tetapi aplikasi membutuhkan App ID dari Privy
-          Dashboard sebelum modal login nyata dapat dibuka.
-        </div>
-        <div className="mt-5 border-2 border-ink bg-ink p-4 font-mono text-xs leading-6 text-white">
-          <p>NEXT_PUBLIC_PRIVY_APP_ID=your_app_id</p>
-          <p>NEXT_PUBLIC_PRIVY_CLIENT_ID=your_client_id</p>
-        </div>
-        <div className="mt-5 text-xs leading-5 text-ink/55">
-          Isi kedua nilai tersebut di <code>.env.local</code>, lalu restart
-          development server. Email, Google, external wallet, dan embedded wallet
-          akan ditangani oleh modal Privy.
-        </div>
-        <Button className="mt-6 w-full" onClick={closeLogin}>
-          Understood
-        </Button>
-      </Modal>
     </>
   );
 }

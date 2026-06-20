@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
-import { useDemo } from "@/components/demo-provider";
+import { useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -34,7 +34,9 @@ export default function AdminPage() {
 }
 
 function AdminContent() {
-  const { state, submissions } = useDemo();
+  const { data: allSubmissions, isLoading, mutate: mutateList } = useApi<Submission[]>("/api/admin/submissions");
+  const { data: allCampaigns } = useApi<any[]>("/api/campaigns");
+  const { mutate: reviewSubmission } = useApiMutation<Submission>();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Submission | null>(null);
   const [decision, setDecision] = useState<"approve" | "reject">("approve");
@@ -44,23 +46,32 @@ function AdminContent() {
 
   const queue = useMemo(
     () =>
-      state.submissions.filter(
+      (allSubmissions || []).filter(
         (submission) =>
           ["SUBMITTED", "UNDER_REVIEW"].includes(submission.status) &&
-          (submission.campaignTitle
+          ((submission.campaignTitle ?? "")
             .toLowerCase()
             .includes(query.toLowerCase()) ||
-            submission.clipperName.toLowerCase().includes(query.toLowerCase())),
+            (submission.clipperName ?? "").toLowerCase().includes(query.toLowerCase())),
       ),
-    [state.submissions, query],
+    [allSubmissions, query],
   );
 
   async function handleReview() {
     if (!selected) return;
     setBusy(true);
-    await submissions.reviewSubmission(selected.id, decision, reason);
+    try {
+      await reviewSubmission(`/api/submissions/${selected.id}/review`, {
+        method: "POST",
+        body: { decision, reason },
+      });
+      await mutateList();
+      setDone(true);
+    } catch (e: any) {
+      console.error(e);
+      alert("Error: " + e.message);
+    }
     setBusy(false);
-    setDone(true);
   }
 
   return (
@@ -120,8 +131,8 @@ function AdminContent() {
             </thead>
             <tbody>
               {queue.map((submission) => {
-                const campaign = state.campaigns.find(
-                  (item) => item.id === submission.campaignId,
+                const campaign = (allCampaigns || []).find(
+                  (item: any) => item.id === submission.campaignId,
                 );
                 const Icon = platformIcons[submission.platform];
                 return (
@@ -174,7 +185,12 @@ function AdminContent() {
               })}
             </tbody>
           </table>
-          {queue.length === 0 && (
+          {isLoading ? (
+            <div className="border-2 border-ink bg-white p-10 text-center">
+              <LoaderCircle className="mx-auto animate-spin text-ink/40" />
+              <p className="mt-3 text-[10px] font-black uppercase text-ink/50">Loading queue</p>
+            </div>
+          ) : queue.length === 0 ? (
             <div className="p-16 text-center">
               <Check className="mx-auto text-blue" size={34} />
               <p className="mt-4 font-display text-3xl uppercase">Queue cleared</p>
@@ -182,7 +198,7 @@ function AdminContent() {
                 No matching submissions need review.
               </p>
             </div>
-          )}
+          ) : null}
         </div>
       </section>
 
@@ -229,8 +245,8 @@ function AdminContent() {
                 </div>
                 <Badge tone="lime">
                   {
-                    state.campaigns.find(
-                      (item) => item.id === selected.campaignId,
+                    (allCampaigns || []).find(
+                      (item: any) => item.id === selected.campaignId,
                     )?.campaignCode
                   }
                 </Badge>
@@ -280,7 +296,7 @@ function AdminContent() {
             )}
             <div className="mt-5 border-2 border-dashed border-ink bg-cream p-4 text-xs leading-5">
               {decision === "approve"
-                ? "Approval creates a mock EIP-712 payout authorization bound to the creator wallet."
+                ? "Approval creates an EIP-712 payout authorization bound to the creator wallet."
                 : "Rejection does not consume a paid winner slot or create a payout."}
             </div>
             <Button
