@@ -16,16 +16,16 @@ import {
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
-import { useDemo } from "@/components/demo-provider";
+import { useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import type {
-  SocialProvider,
-  Submission,
-  Transaction,
-} from "@/lib/types";
+import type { SocialProvider, Submission, Transaction } from "@/lib/types";
 import { formatDate, formatUsdc, shortAddress } from "@/lib/utils";
+import { useWallets } from "@privy-io/react-auth";
+import { createWalletClient, custom, publicActions, parseUnits, stringToHex, pad } from "viem";
+import { baseSepolia } from "viem/chains";
+import { CAMPAIGN_ESCROW_ADDRESS, campaignEscrowAbi } from "@/lib/contracts/campaign-escrow";
 
 const platformIcons = {
   tiktok: Sparkles,
@@ -50,14 +50,18 @@ export default function ClipperDashboardPage() {
 }
 
 function ClipperDashboardContent() {
-  const { state, activeUser, submissions, auth } = useDemo();
-  const clipper = activeUser!;
-  const clipperSubmissions = state.submissions.filter(
-    (submission) => submission.clipperId === clipper.id,
+  const { data: currentUser } = useApi<any>("/api/users/me");
+  const { data: allSubmissions, mutate: mutateSubmissions } = useApi<Submission[]>("/api/submissions");
+  const { data: allCampaigns } = useApi<any[]>("/api/campaigns");
+  const { data: socialProfiles, mutate: mutateProfiles } = useApi<any[]>("/api/users/social-profiles");
+  const { mutate: postClaimConfirmation } = useApiMutation<any>();
+  const { mutate: addProfileMutate } = useApiMutation<any>();
+
+  const clipper = currentUser;
+  const clipperSubmissions = (allSubmissions || []).filter(
+    (submission) => submission.clipperId === clipper?.id,
   );
-  const profiles = state.socialProfiles.filter(
-    (profile) => profile.userId === clipper.id,
-  );
+  const profiles = socialProfiles || [];
   const [claimTarget, setClaimTarget] = useState<Submission | null>(null);
   const [claimStep, setClaimStep] = useState<"confirm" | "processing" | "done">(
     "confirm",
@@ -74,7 +78,7 @@ function ClipperDashboardContent() {
     const paid = clipperSubmissions.filter((item) => item.status === "PAID");
     return {
       earned: paid.reduce((sum, submission) => {
-        const campaign = state.campaigns.find(
+        const campaign = (allCampaigns || []).find(
           (item) => item.id === submission.campaignId,
         );
         return sum + (campaign?.rewardPerSubmission ?? 0);
@@ -86,37 +90,92 @@ function ClipperDashboardContent() {
         (item) => item.status === "UNDER_REVIEW",
       ).length,
     };
-  }, [clipperSubmissions, state.campaigns]);
+  }, [clipperSubmissions, allCampaigns]);
+
+  const { wallets } = useWallets();
 
   async function handleClaim() {
     if (!claimTarget) return;
     setClaimStep("processing");
+
     try {
-      const transaction = await submissions.claimReward(claimTarget.id);
-      setClaimResult(transaction);
+      const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2") ?? wallets[0];
+      if (!wallet) throw new Error("No wallet connected");
+
+      const provider = await wallet.getEthereumProvider();
+      const client = createWalletClient({
+        account: wallet.address as `0x${string}`,
+        chain: baseSepolia,
+        transport: custom(provider)
+      }).extend(publicActions);
+
+      const campaign = (allCampaigns || []).find(c => c.id === claimTarget.campaignId);
+      if (!campaign) throw new Error("Campaign not found");
+
+      const payoutRes = await fetch(`/api/submissions/${claimTarget.id}/payout`);
+      if (!payoutRes.ok) {
+        const errData = await payoutRes.json();
+        throw new Error(errData.error || "Failed to fetch payout signature");
+      }
+      const payoutData = await payoutRes.json();
+
+      const submissionIdBytes32 = `0x${claimTarget.id.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
+
+      const { request } = await client.simulateContract({
+        account: wallet.address as `0x${string}`,
+        address: CAMPAIGN_ESCROW_ADDRESS,
+        abi: campaignEscrowAbi,
+        functionName: 'claimReward',
+        args: [
+            BigInt(campaign.onchainCampaignId),
+            submissionIdBytes32,
+            BigInt(payoutData.rewardAmount),
+            BigInt(payoutData.feeAmount),
+            BigInt(payoutData.nonce),
+            BigInt(payoutData.expiry),
+            payoutData.signature as `0x${string}`
+        ]
+      });
+
+      const transactionHash = await client.writeContract(request);
+      await client.waitForTransactionReceipt({ hash: transactionHash });
+
+      if (!transactionHash) throw new Error("No tx hash");
+      
+      const transaction = await postClaimConfirmation(`/api/submissions/${claimTarget.id}/claim-confirmation`, {
+        method: "POST",
+        body: { txHash: transactionHash, amount: campaign?.rewardPerSubmission ?? 0 }
+      });
+      
+      await mutateSubmissions();
+      setClaimResult({ ...transaction, hash: transactionHash });
       setClaimStep("done");
-    } catch {
+    } catch (err: any) {
+      console.error("Claim failed:", err);
+      alert("Claim failed: " + err.message);
       setClaimStep("confirm");
     }
   }
 
-  async function handleAddProfile(event: FormEvent) {
-    event.preventDefault();
+  async function handleAddProfile() {
+    if (!username || !profileUrl) {
+      setProfileError("All fields are required.");
+      return;
+    }
+    setSavingProfile(true);
     setProfileError("");
     try {
-      const url = new URL(profileUrl);
-      if (!url.hostname.includes(`${provider === "youtube" ? "youtube" : provider}.com`)) {
-        throw new Error(`Enter a valid ${provider} profile URL.`);
-      }
-      setSavingProfile(true);
-      await auth.addSocialProfile(provider, username, profileUrl);
+      await addProfileMutate("/api/users/social-profiles", {
+        method: "POST",
+        body: { provider, username, profileUrl }
+      });
+      await mutateProfiles();
       setProfileOpen(false);
       setUsername("");
       setProfileUrl("");
-    } catch (error) {
-      setProfileError(
-        error instanceof Error ? error.message : "Invalid profile URL.",
-      );
+    } catch (e: any) {
+      console.error(e);
+      setProfileError(e.message);
     } finally {
       setSavingProfile(false);
     }
@@ -193,10 +252,10 @@ function ClipperDashboardContent() {
             </div>
             <div className="space-y-4">
               {clipperSubmissions.map((submission) => {
-                const campaign = state.campaigns.find(
-                  (item) => item.id === submission.campaignId,
+                const campaign = (allCampaigns || []).find(
+                  (item: any) => item.id === submission.campaignId,
                 );
-                const Icon = platformIcons[submission.platform];
+                const Icon = platformIcons[submission.platform as keyof typeof platformIcons];
                 return (
                   <article
                     key={submission.id}
@@ -304,7 +363,7 @@ function ClipperDashboardContent() {
               </div>
               <div className="space-y-3">
                 {profiles.map((profile) => {
-                  const Icon = platformIcons[profile.provider];
+                  const Icon = platformIcons[profile.provider as keyof typeof platformIcons];
                   return (
                     <div
                       key={profile.id}
@@ -337,7 +396,7 @@ function ClipperDashboardContent() {
           setClaimTarget(null);
           setClaimStep("confirm");
         }}
-        eyebrow="Mock escrow claim"
+        eyebrow="Escrow claim"
         title={
           claimStep === "done"
             ? "Reward paid"
@@ -352,8 +411,8 @@ function ClipperDashboardContent() {
               <p className="text-[9px] font-black uppercase">You will receive</p>
               <p className="font-display text-5xl text-blue">
                 {formatUsdc(
-                  state.campaigns.find(
-                    (item) => item.id === claimTarget.campaignId,
+                  (allCampaigns || []).find(
+                    (item: any) => item.id === claimTarget.campaignId,
                   )?.rewardPerSubmission ?? 0,
                 )}
               </p>
@@ -365,11 +424,11 @@ function ClipperDashboardContent() {
               <p className="mt-1 font-mono text-xs">{clipper.walletAddress}</p>
             </div>
             <p className="mt-5 text-xs leading-5 text-ink/55">
-              The mock EIP-712 authorization is tied to this submission and
+              The EIP-712 payout authorization is tied to this submission and
               wallet. It can only be claimed once.
             </p>
             <Button className="mt-5 w-full" size="lg" onClick={handleClaim}>
-              <Wallet size={18} /> Confirm mock claim
+              <Wallet size={18} /> Confirm claim
             </Button>
           </div>
         )}

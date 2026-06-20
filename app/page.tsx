@@ -11,13 +11,14 @@ import {
   Wallet,
 } from "lucide-react";
 import { CampaignCard } from "@/components/campaign-card";
-import { useDemo } from "@/components/demo-provider";
+import { useApi } from "@/lib/hooks/use-api";
+import type { Campaign } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
-  const { state } = useDemo();
-  const featured = state.campaigns.filter((item) => item.status === "OPEN").slice(0, 3);
+  const { data: allCampaigns } = useApi<Campaign[]>("/api/campaigns");
+  const featured = (allCampaigns || []).filter((item) => item.status === "OPEN").slice(0, 3);
 
   return (
     <>

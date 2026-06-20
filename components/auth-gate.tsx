@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { LockKeyhole, ShieldX } from "lucide-react";
 import type { ReactNode } from "react";
-import { useDemo } from "@/components/demo-provider";
+import { usePrivy } from "@privy-io/react-auth";
+import { useApi } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -16,9 +17,10 @@ export function AuthGate({
   adminOnly?: boolean;
   memberOnly?: boolean;
 }) {
-  const { activeUser, hydrated, openLogin } = useDemo();
+  const { ready, login, authenticated } = usePrivy();
+  const { data: activeUser, isLoading } = useApi<any>("/api/users/me");
 
-  if (!hydrated) {
+  if (!ready || (authenticated && isLoading)) {
     return (
       <section className="page-shell grid min-h-[560px] place-items-center py-16">
         <p className="text-xs font-black uppercase tracking-widest text-blue">
@@ -45,8 +47,8 @@ export function AuthGate({
             Clipfun uses one login flow for creators, brands, and platform
             administrators.
           </p>
-          <Button className="mt-7" size="lg" onClick={openLogin}>
-            Sign in with Privy demo
+          <Button className="mt-7" size="lg" onClick={login}>
+            Sign in with Privy
           </Button>
         </div>
       </section>

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
-import { useDemo } from "@/components/demo-provider";
+import { useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { CampaignDraft } from "@/lib/types";
@@ -54,7 +54,7 @@ export default function CreateCampaignPage() {
 
 function CreateCampaignContent() {
   const router = useRouter();
-  const { campaigns } = useDemo();
+  const { mutate: createCampaign } = useApiMutation<any>();
   const [step, setStep] = useState(1);
   const [draft, setDraft] = useState(initialDraft);
   const [requirementsText, setRequirementsText] = useState(
@@ -103,13 +103,22 @@ function CreateCampaignContent() {
 
   async function handleCreate() {
     setSaving(true);
-    const campaign = await campaigns.createCampaign({
-      ...draft,
-      requirements: requirementsText.split("\n").filter(Boolean),
-      prohibited: prohibitedText.split("\n").filter(Boolean),
-      deadline: new Date(draft.deadline).toISOString(),
-    });
-    router.push(`/brand?created=${campaign.id}`);
+    try {
+      const campaign = await createCampaign("/api/campaigns", {
+        method: "POST",
+        body: {
+          ...draft,
+          requirements: requirementsText.split("\n").filter(Boolean),
+          prohibited: prohibitedText.split("\n").filter(Boolean),
+          deadline: new Date(draft.deadline).toISOString(),
+        }
+      });
+      router.push(`/brand?created=${campaign.id}`);
+    } catch (e: any) {
+      console.error(e);
+      alert("Error: " + e.message);
+      setSaving(false);
+    }
   }
 
   return (
@@ -125,7 +134,7 @@ function CreateCampaignContent() {
         </div>
         <p className="max-w-sm text-sm leading-6 text-ink/55">
           Draft first, fund second. Your campaign stays private until the full
-          mock deposit is confirmed.
+          deposit is confirmed.
         </p>
       </div>
 
@@ -230,6 +239,21 @@ function CreateCampaignContent() {
                     onChange={(event) => setProhibitedText(event.target.value)}
                   />
                 </div>
+              </div>
+              <div>
+                <label className="label" htmlFor="reference">
+                  Reference attachment (optional)
+                </label>
+                <input
+                  id="reference"
+                  type="url"
+                  className="field"
+                  placeholder="e.g. Google Drive link or example TikTok video"
+                  value={draft.referenceAttachment || ""}
+                  onChange={(event) =>
+                    setDraft({ ...draft, referenceAttachment: event.target.value })
+                  }
+                />
               </div>
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
@@ -402,7 +426,7 @@ function CreateCampaignContent() {
               </div>
               <div className="mt-6 border-2 border-dashed border-ink bg-cream p-5 text-sm leading-6">
                 <strong>This creates a private draft.</strong> You will fund and
-                publish it from the Brand dashboard. No mock USDC moves during
+                publish it from the Brand dashboard. No USDC moves during
                 this step.
               </div>
             </div>

@@ -11,12 +11,12 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
       <CampaignVisual campaign={campaign} compact />
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <Link href={`/profile/${campaign.brandId}`} className="flex items-center gap-2 hover:underline">
             <span className="grid h-8 w-8 place-items-center border border-ink bg-cream text-[10px] font-black">
               {campaign.brandAvatar}
             </span>
             <span className="text-xs font-bold">{campaign.brandName}</span>
-          </div>
+          </Link>
           <Badge tone="lime">{campaign.status}</Badge>
         </div>
         <h3 className="mb-2 font-display text-3xl uppercase leading-[0.92]">

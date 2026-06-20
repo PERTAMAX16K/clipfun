@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
-import { useDemo } from "@/components/demo-provider";
+import { useApi } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Transaction } from "@/lib/types";
@@ -33,12 +33,13 @@ export default function ActivityPage() {
 }
 
 function ActivityContent() {
-  const { state, transactions } = useDemo();
+  const { data: allTransactions, isLoading } = useApi<Transaction[]>("/api/transactions");
+  const transactions = allTransactions || [];
   const [retrying, setRetrying] = useState("");
 
   async function retry(transaction: Transaction) {
     setRetrying(transaction.id);
-    await transactions.retryTransaction(transaction.id);
+    // Real retry logic goes here in the future
     setRetrying("");
   }
 
@@ -46,7 +47,7 @@ function ActivityContent() {
     <>
       <section className="border-b-2 border-ink bg-orange text-white">
         <div className="page-shell py-12 sm:py-16">
-          <Badge tone="lime" className="mb-4">Mock block explorer</Badge>
+          <Badge tone="lime" className="mb-4">Block explorer</Badge>
           <h1 className="font-display text-6xl uppercase leading-[0.85] sm:text-8xl">
             Every move,
             <br />
@@ -73,16 +74,21 @@ function ActivityContent() {
           </div>
         </div>
 
-        {state.transactions.length > 0 ? (
+        {isLoading ? (
+          <div className="border-2 border-ink bg-white p-10 text-center">
+            <LoaderCircle className="mx-auto animate-spin text-ink/40" />
+            <p className="mt-3 text-[10px] font-black uppercase text-ink/50">Loading activity</p>
+          </div>
+        ) : transactions.length > 0 ? (
           <div className="overflow-hidden border-2 border-ink bg-white shadow-brutal-lg">
-            {state.transactions.map((transaction, index) => {
+            {transactions.map((transaction, index) => {
               const meta = transactionMeta[transaction.type];
               const Icon = meta.icon;
               return (
                 <article
                   key={transaction.id}
                   className={`grid gap-4 p-5 sm:grid-cols-[auto_1fr_auto] sm:items-center ${
-                    index < state.transactions.length - 1
+                    index < transactions.length - 1
                       ? "border-b-2 border-ink"
                       : ""
                   }`}
@@ -181,8 +187,7 @@ function ActivityContent() {
         <div className="mt-6 flex items-start gap-3 border-2 border-ink bg-lime/40 p-4 text-xs leading-5">
           <Check className="mt-0.5 shrink-0 text-blue" size={17} />
           Explorer links demonstrate the final navigation pattern. Generated
-          hashes are mock values and will not resolve to real Base Sepolia
-          transactions.
+          transactions. In the MVP phase, these are recorded on the Base Sepolia testnet.
         </div>
       </section>
     </>

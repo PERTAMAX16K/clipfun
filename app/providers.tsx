@@ -43,6 +43,7 @@ interface PrivySession {
   login: () => void;
   logout: () => Promise<void>;
   linkWallet: () => void;
+  getAccessToken: () => Promise<string | null>;
 }
 
 const missingConfigSession: PrivySession = {
@@ -57,6 +58,7 @@ const missingConfigSession: PrivySession = {
   login: () => undefined,
   logout: async () => undefined,
   linkWallet: () => undefined,
+  getAccessToken: async () => null,
 };
 
 const PrivySessionContext =
@@ -70,6 +72,7 @@ function PrivySessionBridge({ children }: { children: ReactNode }) {
     login,
     logout,
     linkWallet,
+    getAccessToken,
   } = usePrivy();
   const { wallets, ready: walletsReady } = useWallets();
 
@@ -103,6 +106,7 @@ function PrivySessionBridge({ children }: { children: ReactNode }) {
       login: () => login(),
       logout,
       linkWallet: () => linkWallet({ walletChainType: "ethereum-only" }),
+      getAccessToken,
     };
   }, [
     authenticated,
@@ -113,6 +117,7 @@ function PrivySessionBridge({ children }: { children: ReactNode }) {
     user,
     wallets,
     walletsReady,
+    getAccessToken,
   ]);
 
   return (
@@ -139,7 +144,6 @@ export function AppProviders({ children }: { children: ReactNode }) {
       appId={appId}
       clientId={clientId || undefined}
       config={{
-        loginMethods: ["email", "google", "wallet"],
         defaultChain: baseSepolia,
         supportedChains: [baseSepolia],
         embeddedWallets: {

@@ -16,12 +16,17 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
-import { useDemo } from "@/components/demo-provider";
+import { useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import type { Campaign, Transaction } from "@/lib/types";
 import { formatDate, formatUsdc } from "@/lib/utils";
+import { useWallets } from "@privy-io/react-auth";
+import { createWalletClient, custom, publicActions, parseUnits, stringToHex, pad } from "viem";
+import { baseSepolia } from "viem/chains";
+import { USDC_ADDRESS, erc20Abi } from "@/lib/contracts/usdc";
+import { CAMPAIGN_ESCROW_ADDRESS, campaignEscrowAbi } from "@/lib/contracts/campaign-escrow";
 
 export default function BrandDashboardPage() {
   return (
@@ -32,14 +37,19 @@ export default function BrandDashboardPage() {
 }
 
 function BrandDashboardContent() {
-  const { state, activeUser, campaigns, transactions } = useDemo();
-  const brandUser = activeUser!;
-  const brandCampaigns = state.campaigns.filter(
-    (campaign) => campaign.brandId === brandUser.id,
+  const { data: currentUser } = useApi<any>("/api/users/me");
+  const { data: allCampaigns, mutate: mutateCampaigns } = useApi<Campaign[]>("/api/campaigns");
+  const { data: allTransactions, mutate: mutateTransactions } = useApi<Transaction[]>("/api/transactions");
+  const { mutate: postFunding } = useApiMutation<any>();
+  const { mutate: postRefund } = useApiMutation<any>();
+  const { mutate: retryTx } = useApiMutation<Transaction>();
+
+  const brandUser = currentUser;
+  const brandCampaigns = (allCampaigns || []).filter(
+    (campaign) => campaign.brandId === brandUser?.id,
   );
   const [fundTarget, setFundTarget] = useState<Campaign | null>(null);
   const [refundTarget, setRefundTarget] = useState<Campaign | null>(null);
-  const [simulateFailure, setSimulateFailure] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Transaction | null>(null);
 
@@ -62,30 +72,154 @@ function BrandDashboardContent() {
     };
   }, [brandCampaigns]);
 
+  const { wallets } = useWallets();
+
   async function handleFund() {
     if (!fundTarget) return;
     setBusy(true);
-    const transaction = await campaigns.fundCampaign(
-      fundTarget.id,
-      simulateFailure,
-    );
-    setResult(transaction);
+
+    try {
+      const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2") ?? wallets[0];
+      if (!wallet) throw new Error("No wallet connected");
+
+      const provider = await wallet.getEthereumProvider();
+      const client = createWalletClient({
+        account: wallet.address as `0x${string}`,
+        chain: baseSepolia,
+        transport: custom(provider)
+      }).extend(publicActions);
+
+      const rewardAmount = parseUnits(fundTarget.rewardPerSubmission.toString(), 6);
+      const feeAmount = parseUnits((fundTarget.rewardPerSubmission * 0.05).toString(), 6);
+      
+      const totalReward = rewardAmount * BigInt(fundTarget.maxWinners);
+      const totalFee = feeAmount * BigInt(fundTarget.maxWinners);
+      const totalDeposit = totalReward + totalFee;
+
+      const { request: approveReq } = await client.simulateContract({
+        account: wallet.address as `0x${string}`,
+        address: USDC_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [CAMPAIGN_ESCROW_ADDRESS, totalDeposit]
+      });
+      const approveTx = await client.writeContract(approveReq);
+      await client.waitForTransactionReceipt({ hash: approveTx });
+
+      const metadataHash = `0x${fundTarget.id.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
+      const deadline = BigInt(Math.floor(new Date(fundTarget.deadline).getTime() / 1000));
+
+      const { request: fundReq } = await client.simulateContract({
+        account: wallet.address as `0x${string}`,
+        address: CAMPAIGN_ESCROW_ADDRESS,
+        abi: campaignEscrowAbi,
+        functionName: 'createCampaign',
+        args: [metadataHash, totalReward, totalFee, deadline, BigInt(fundTarget.maxWinners)]
+      });
+      const fundTx = await client.writeContract(fundReq);
+      const receipt = await client.waitForTransactionReceipt({ hash: fundTx });
+
+      if (!fundTx) {
+        throw new Error("No tx hash");
+      }
+      
+      let onchainCampaignId = 1;
+      try {
+        const { decodeEventLog } = await import("viem");
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: campaignEscrowAbi,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (decoded.eventName === 'CampaignCreated') {
+              onchainCampaignId = Number((decoded.args as any).campaignId);
+              break;
+            }
+          } catch(e) {}
+        }
+      } catch(err) {
+        console.error("Failed to parse logs", err);
+      }
+      
+      const transaction = await postFunding(`/api/campaigns/${fundTarget.id}/funding-confirmation`, {
+        method: "POST",
+        body: { txHash: fundTx, onchainCampaignId }
+      });
+      await mutateCampaigns();
+      await mutateTransactions();
+      setResult({ ...transaction, hash: fundTx });
+    } catch (err: any) {
+      console.error(err);
+      setResult({
+        id: "err-fund",
+        type: "FUND",
+        campaignId: fundTarget.id,
+        campaignTitle: fundTarget.title,
+        amount: fundTarget.rewardPerSubmission * fundTarget.maxWinners * 1.05,
+        status: "FAILED",
+        hash: "",
+        createdAt: new Date().toISOString()
+      });
+    }
     setBusy(false);
   }
 
   async function handleRetry() {
     if (!result) return;
     setBusy(true);
-    const transaction = await transactions.retryTransaction(result.id);
-    setResult(transaction);
-    setBusy(false);
+    try {
+      if (result.type === "FUND") {
+        await handleFund();
+      } else {
+        // Real retry endpoint in future
+        await new Promise(r => setTimeout(r, 1000));
+        setResult(result);
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleRefund() {
     if (!refundTarget) return;
     setBusy(true);
-    const transaction = await campaigns.refundCampaign(refundTarget.id);
-    setResult(transaction);
+
+    try {
+      const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2") ?? wallets[0];
+      if (!wallet) throw new Error("No wallet connected");
+
+      const provider = await wallet.getEthereumProvider();
+      const client = createWalletClient({
+        account: wallet.address as `0x${string}`,
+        chain: baseSepolia,
+        transport: custom(provider)
+      }).extend(publicActions);
+
+      const contractCampaignId = BigInt(refundTarget.onchainCampaignId || 1); 
+
+      const { request: refundReq } = await client.simulateContract({
+        account: wallet.address as `0x${string}`,
+        address: CAMPAIGN_ESCROW_ADDRESS,
+        abi: campaignEscrowAbi,
+        functionName: 'refundRemaining',
+        args: [contractCampaignId]
+      });
+      const refundTx = await client.writeContract(refundReq);
+      await client.waitForTransactionReceipt({ hash: refundTx });
+
+      const transaction = await postRefund(`/api/campaigns/${refundTarget.id}/refund`, {
+        method: "POST",
+        body: { txHash: refundTx }
+      });
+      await mutateCampaigns();
+      await mutateTransactions();
+      setResult({ ...transaction, hash: refundTx });
+    } catch (err: any) {
+      console.error(err);
+      alert("Contract refund failed: " + err.message);
+    }
     setBusy(false);
   }
 
@@ -230,7 +364,7 @@ function BrandDashboardContent() {
           setResult(null);
           setSimulateFailure(false);
         }}
-        eyebrow="Mock wallet transaction"
+        eyebrow="Wallet transaction"
         title={
           result?.status === "CONFIRMED"
             ? "Campaign is live"
@@ -247,7 +381,7 @@ function BrandDashboardContent() {
               <AlertTriangle size={34} />
             </div>
             <p className="mt-6 text-sm leading-6 text-ink/60">
-              The mock wallet rejected this transaction. Your campaign remains
+              The wallet rejected this transaction. Your campaign remains
               hidden and no state was lost.
             </p>
             <Button className="mt-6 w-full" onClick={handleRetry} disabled={busy}>
@@ -291,22 +425,7 @@ function BrandDashboardContent() {
                 </strong>
               </div>
             </div>
-            <label className="mt-5 flex cursor-pointer items-start gap-3 border-2 border-dashed border-orange bg-orange/10 p-4">
-              <input
-                type="checkbox"
-                checked={simulateFailure}
-                onChange={(event) => setSimulateFailure(event.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="block text-xs font-black uppercase">
-                  Simulate first transaction failure
-                </span>
-                <span className="mt-1 block text-[10px] leading-4 text-ink/55">
-                  Demonstrates the retry state without opening a real wallet.
-                </span>
-              </span>
-            </label>
+
             <Button
               className="mt-5 w-full"
               size="lg"
@@ -320,7 +439,7 @@ function BrandDashboardContent() {
                 </>
               ) : (
                 <>
-                  <Wallet size={17} /> Confirm mock deposit
+                  <Wallet size={17} /> Confirm deposit
                 </>
               )}
             </Button>
@@ -346,7 +465,7 @@ function BrandDashboardContent() {
               pool. New submissions will no longer be accepted.
             </p>
             <div className="mt-5 border-2 border-ink bg-lime p-5">
-              <p className="text-[10px] font-black uppercase">Mock refund</p>
+              <p className="text-[10px] font-black uppercase">Refund</p>
               <p className="font-display text-4xl text-blue">
                 {formatUsdc(
                   (refundTarget.maxWinners - refundTarget.paidWinners) *
@@ -381,7 +500,7 @@ function TransactionSuccess({ transaction }: { transaction: Transaction }) {
         {formatUsdc(transaction.amount)}
       </p>
       <p className="mt-2 text-sm text-ink/55">
-        Mock transaction confirmed on Base Sepolia.
+        Transaction confirmed on Base Sepolia.
       </p>
       <a
         href={`https://sepolia.basescan.org/tx/${transaction.hash}`}
@@ -389,7 +508,7 @@ function TransactionSuccess({ transaction }: { transaction: Transaction }) {
         rel="noreferrer"
         className="mt-5 inline-flex items-center gap-2 text-[10px] font-black uppercase text-blue underline"
       >
-        View mock explorer link <ExternalLink size={13} />
+        View transaction <ExternalLink size={13} />
       </a>
     </div>
   );
