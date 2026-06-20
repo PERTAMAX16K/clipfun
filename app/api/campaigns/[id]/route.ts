@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, users, submissions } from "@/db/schema";
-import { requireAuth } from "@/lib/server/auth";
+import { requireAuth, requireBrand } from "@/lib/server/auth";
 import { updateCampaignSchema } from "@/lib/validations";
 
 /**
@@ -57,7 +57,7 @@ export async function PATCH(
 
   let currentUser;
   try {
-    currentUser = await requireAuth(request);
+    currentUser = await requireBrand(request);
   } catch (error) {
     if (error instanceof NextResponse) return error;
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

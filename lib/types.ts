@@ -1,14 +1,18 @@
-export type UserRole = "user" | "admin";
+export type UserRole = "clipper" | "brand" | "admin";
 export type SocialProvider = "youtube" | "tiktok" | "instagram";
 export type CampaignStatus =
   | "DRAFT"
   | "AWAITING_FUNDING"
   | "OPEN"
   | "COMPLETED"
-  | "REFUNDED";
+  | "EXPIRED"
+  | "REFUNDED"
+  | "CANCELLED"
+  | "PAUSED";
 export type SubmissionStatus =
   | "SUBMITTED"
   | "UNDER_REVIEW"
+  | "APPROVED"
   | "REJECTED"
   | "CLAIMABLE"
   | "PAID";
@@ -18,12 +22,16 @@ export type TransactionType = "FUND" | "CLAIM" | "REFUND";
 export interface User {
   id: string;
   displayName: string;
-  handle: string;
-  avatar: string;
-  walletAddress: string;
-  role: UserRole;
-  bio: string;
+  handle?: string;
+  avatar: string | null;
+  walletAddress: string | null;
+  role: UserRole | null;
+  bio?: string | null;
 }
+
+export type ActiveUser = User & {
+  privyDid?: string;
+};
 
 export interface SocialProfile {
   id: string;
@@ -96,6 +104,7 @@ export interface Transaction {
   status: TransactionStatus;
   hash: string;
   createdAt: string;
+  errorMessage?: string;
 }
 
 export interface DemoState {

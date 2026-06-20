@@ -38,8 +38,11 @@ export async function GET(request: NextRequest) {
       .limit(50);
 
     return NextResponse.json(results);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to fetch transactions:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch transactions" },
+      { status: 500 },
+    );
   }
 }

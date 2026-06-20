@@ -7,6 +7,7 @@ import { CampaignCard } from "@/components/campaign-card";
 import { shortAddress, formatDate } from "@/lib/utils";
 import { Link2, Youtube, Instagram, MonitorPlay, BadgeCheck } from "lucide-react";
 import Link from "next/link";
+import type { Campaign } from "@/lib/types";
 
 export default async function ProfilePage({
   params,
@@ -92,13 +93,30 @@ export default async function ProfilePage({
                   <CampaignCard
                     key={campaign.id}
                     campaign={{
-                      ...campaign,
+                      id: campaign.id,
+                      brandId: campaign.brandId,
                       brandName: user.displayName,
                       brandAvatar: user.avatar ?? "",
+                      title: campaign.title,
+                      summary: campaign.summary,
+                      brief: campaign.brief,
+                      requirements: campaign.contentRequirements,
+                      prohibited: campaign.prohibitedContent,
+                      category: campaign.category,
+                      platform: campaign.platform as Campaign["platform"],
+                      referenceAttachment: campaign.referenceAttachment ?? undefined,
+                      rewardPerSubmission: campaign.rewardPerSubmission,
+                      maxWinners: campaign.maxWinners,
+                      paidWinners: campaign.paidWinners,
                       submissionCount: 0, // Simplified for profile view
+                      campaignCode: campaign.campaignCode ?? "",
                       deadline: campaign.deadline.toISOString(),
+                      status: campaign.status as Campaign["status"],
+                      visual: campaign.visual as Campaign["visual"],
                       createdAt: campaign.createdAt.toISOString(),
-                    } as any}
+                      fundingTxHash: campaign.fundingTxHash ?? undefined,
+                      onchainCampaignId: campaign.onchainCampaignId ?? undefined,
+                    } satisfies Campaign}
                   />
                 ))}
               </div>

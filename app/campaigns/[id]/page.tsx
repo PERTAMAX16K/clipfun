@@ -18,12 +18,12 @@ import {
 } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { CampaignVisual } from "@/components/campaign-visual";
-import { useApi, useApiMutation } from "@/lib/hooks/use-api";
+import { getErrorMessage, useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { usePrivy } from "@privy-io/react-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import type { SocialProvider } from "@/lib/types";
+import type { ActiveUser, Campaign, SocialProvider, Submission } from "@/lib/types";
 import { formatDate, formatUsdc } from "@/lib/utils";
 
 const platformIcons = {
@@ -35,10 +35,10 @@ const platformIcons = {
 export default function CampaignDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { data: currentUser } = useApi<any>("/api/users/me");
-  const { data: allCampaigns } = useApi<any[]>("/api/campaigns");
-  const { mutate: postSubmission } = useApiMutation<any>();
-  const { login } = usePrivy();
+  const { login, ready, authenticated } = usePrivy();
+  const { data: currentUser } = useApi<ActiveUser>(ready && authenticated ? "/api/users/me" : null);
+  const { data: allCampaigns } = useApi<Campaign[]>("/api/campaigns");
+  const { mutate: postSubmission } = useApiMutation<Submission>();
   
   const activeUser = currentUser;
   const campaign = (allCampaigns || []).find((item) => item.id === params.id);
@@ -93,11 +93,11 @@ export default function CampaignDetailPage() {
         body: { campaignId, platform, postUrl: url }
       });
       setSuccess(true);
-    } catch (submissionError: any) {
+    } catch (submissionError: unknown) {
       setError(
         submissionError instanceof Error
           ? submissionError.message
-          : "Submission failed.",
+          : getErrorMessage(submissionError, "Submission failed."),
       );
     } finally {
       setLoading(false);
@@ -160,7 +160,7 @@ export default function CampaignDetailPage() {
                   <Check className="text-blue" /> Must have
                 </h3>
                 <ul className="space-y-4">
-                  {campaign.requirements.map((item: string) => (
+                  {campaign.requirements?.map((item: string) => (
                     <li key={item} className="flex gap-3 text-sm leading-6">
                       <span className="mt-2 h-2 w-2 shrink-0 bg-lime outline outline-1 outline-ink" />
                       {item}
@@ -173,7 +173,7 @@ export default function CampaignDetailPage() {
                   Keep it clean
                 </h3>
                 <ul className="space-y-4">
-                  {campaign.prohibited.map((item: string) => (
+                  {campaign.prohibited?.map((item: string) => (
                     <li key={item} className="flex gap-3 text-sm leading-6">
                       <span className="mt-2 h-2 w-2 shrink-0 bg-white" />
                       {item}
@@ -252,14 +252,14 @@ export default function CampaignDetailPage() {
                   className="w-full"
                   size="lg"
                   onClick={() =>
-                    activeUser?.role === "user"
+                    activeUser?.role === "clipper"
                       ? setSubmitOpen(true)
-                      : login()
+                      : !activeUser ? login() : undefined
                   }
-                  disabled={campaign.status !== "OPEN" || activeUser?.role === "admin"}
+                  disabled={campaign.status !== "OPEN" || activeUser?.role === "admin" || activeUser?.role === "brand"}
                 >
                   <Upload size={18} />{" "}
-                  {!activeUser ? "Sign in to submit" : "Submit your clip"}
+                  {!activeUser ? "Sign in to submit" : activeUser.role === "clipper" ? "Submit your clip" : "Only clippers can submit"}
                 </Button>
                 <p className="mt-4 flex items-center justify-center gap-2 text-[9px] font-black uppercase text-ink/45">
                   <ShieldCheck size={13} /> {formatUsdc(totalPool)} funded in escrow

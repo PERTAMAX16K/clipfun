@@ -7,10 +7,9 @@ video creators. Brands publish funded creative campaigns, creators submit
 content, platform administrators review submissions, and approved rewards are
 claimed transparently in USDC.
 
-This repository is an active hackathon build. The current release focuses on
-the complete product interface and authentication foundation. Campaign,
-submission, transaction, and payout data are still simulated locally while the
-escrow contract and production backend are being developed.
+This repository is an active hackathon build. The application has been fully integrated
+with PostgreSQL for persistence, and smart contracts deployed on Base Sepolia for
+secure, verifiable transactions and payout claims.
 
 ## Product vision
 
@@ -31,17 +30,16 @@ FUND → PUBLISH → SUBMIT → REVIEW → CLAIM → REFUND
 | Area | Status |
 | --- | --- |
 | Responsive marketplace UI | Implemented |
-| Brand campaign builder | Implemented with mock state |
-| Creator submissions and rewards | Implemented with mock state |
+| Brand campaign builder | Implemented |
+| Creator submissions and rewards | Implemented |
 | Admin moderation console | Implemented with role-gated UI |
-| Privy authentication | SDK integrated; App ID required |
-| Embedded and external wallets | Privy configuration prepared |
-| Local persistence | Implemented with `localStorage` |
-| PostgreSQL and application API | Planned |
-| Campaign escrow contract | Planned |
-| Base Sepolia transactions | Planned |
+| Privy authentication | Implemented |
+| Embedded and external wallets | Implemented |
+| PostgreSQL and application API | Implemented |
+| Campaign escrow contract | Implemented |
+| Base Sepolia transactions | Implemented |
 
-No real funds are used by the current application.
+No real mainnet funds are used by the current application. Only Base Sepolia Testnet USDC and ETH.
 
 ## Demo flows
 
@@ -50,7 +48,7 @@ No real funds are used by the current application.
 1. Sign in through Privy.
 2. Create a campaign draft.
 3. Configure the fixed USDC reward and maximum paid submissions.
-4. Simulate wallet confirmation and campaign funding.
+4. Simulate wallet confirmation and campaign funding via Base Sepolia.
 5. Monitor submissions and refund the unused reward pool.
 
 ### Creator
@@ -59,7 +57,7 @@ No real funds are used by the current application.
 2. Explore funded campaign opportunities.
 3. Submit a public TikTok, YouTube Shorts, or Instagram Reels URL.
 4. Track the moderation status.
-5. Simulate claiming an approved USDC reward.
+5. Claim an approved USDC reward directly to your wallet via Smart Contract.
 
 ### Administrator
 
@@ -90,9 +88,9 @@ authorization will replace the allowlist.
 | Deployment | Vercel + managed PostgreSQL | Web application and persistent application data |
 | Observability | Sentry + PostHog | Error monitoring and product analytics |
 
-The current repository already uses Next.js, React, TypeScript, Tailwind,
-Privy, and Viem. Database, API, contract, storage, testing, and observability
-layers are the next implementation phases.
+The current repository uses Next.js, React, TypeScript, Tailwind,
+Privy, Drizzle ORM, and Viem. Backend verification runs against the Base Sepolia Testnet
+using the CampaignEscrow contract.
 
 ## System architecture
 
@@ -178,9 +176,7 @@ sequenceDiagram
     B->>E: Refund unused campaign balance
 ```
 
-The UI communicates through domain-oriented service interfaces. The current
-mock services can therefore be replaced incrementally by PostgreSQL, API, and
-blockchain adapters without rewriting page components.
+The UI communicates through domain-oriented service interfaces communicating with real PostgreSQL tables and blockchain transactions on Base Sepolia.
 
 ## Project structure
 
@@ -277,12 +273,12 @@ can be longer on resource-constrained machines.
 
 ## Roadmap
 
-1. Complete Privy dashboard configuration and validate embedded wallets.
-2. Add PostgreSQL, Drizzle ORM, and server-verified user synchronization.
-3. Implement and test `CampaignEscrow.sol` with Foundry.
-4. Deploy the escrow contract and mock USDC workflow to Base Sepolia.
-5. Replace campaign funding, payout claims, and refunds with Viem transactions.
-6. Add idempotent contract event synchronization and end-to-end tests.
+1. Complete Privy dashboard configuration and validate embedded wallets. **(Done)**
+2. Add PostgreSQL, Drizzle ORM, and server-verified user synchronization. **(Done)**
+3. Implement and test `CampaignEscrow.sol` with Foundry/Hardhat. **(Done)**
+4. Deploy the escrow contract and mock USDC workflow to Base Sepolia. **(Ready)**
+5. Replace campaign funding, payout claims, and refunds with Viem transactions. **(Done)**
+6. Add backend API verification of onchain transactions. **(Done)**
 7. Deploy the web application and managed PostgreSQL environment.
 
 ## Network target

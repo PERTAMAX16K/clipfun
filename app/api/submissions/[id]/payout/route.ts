@@ -3,14 +3,24 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { payoutAuthorizations, submissions } from "@/db/schema";
 
+import { requireClipper } from "@/lib/server/auth";
+
 /**
  * GET /api/submissions/:id/payout — Get payout signature for claiming
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+
+  let currentUser;
+  try {
+    currentUser = await requireClipper(request);
+  } catch (error) {
+    if (error instanceof NextResponse) return error;
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   // Verify submission exists and is claimable
   const [submission] = await db
@@ -24,6 +34,10 @@ export async function GET(
       { error: "Submission not found" },
       { status: 404 },
     );
+  }
+
+  if (submission.clipperId !== currentUser.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (submission.status !== "CLAIMABLE") {

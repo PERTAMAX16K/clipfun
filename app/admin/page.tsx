@@ -16,8 +16,9 @@ import { useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import type { Submission } from "@/lib/types";
+import type { Campaign, Submission } from "@/lib/types";
 import { formatDate, formatUsdc } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/hooks/use-api";
 
 const platformIcons = {
   tiktok: Sparkles,
@@ -35,7 +36,7 @@ export default function AdminPage() {
 
 function AdminContent() {
   const { data: allSubmissions, isLoading, mutate: mutateList } = useApi<Submission[]>("/api/admin/submissions");
-  const { data: allCampaigns } = useApi<any[]>("/api/campaigns");
+  const { data: allCampaigns } = useApi<Campaign[]>("/api/campaigns");
   const { mutate: reviewSubmission } = useApiMutation<Submission>();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Submission | null>(null);
@@ -67,9 +68,9 @@ function AdminContent() {
       });
       await mutateList();
       setDone(true);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert("Error: " + e.message);
+      alert("Error: " + getErrorMessage(e));
     }
     setBusy(false);
   }
@@ -132,7 +133,7 @@ function AdminContent() {
             <tbody>
               {queue.map((submission) => {
                 const campaign = (allCampaigns || []).find(
-                  (item: any) => item.id === submission.campaignId,
+                  (item) => item.id === submission.campaignId,
                 );
                 const Icon = platformIcons[submission.platform];
                 return (
@@ -246,7 +247,7 @@ function AdminContent() {
                 <Badge tone="lime">
                   {
                     (allCampaigns || []).find(
-                      (item: any) => item.id === selected.campaignId,
+                      (item) => item.id === selected.campaignId,
                     )?.campaignCode
                   }
                 </Badge>

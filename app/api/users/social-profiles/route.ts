@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { socialProfiles } from "@/db/schema";
-import { requireAuth } from "@/lib/server/auth";
+import { requireAuth, requireClipper } from "@/lib/server/auth";
 import { addSocialProfileSchema } from "@/lib/validations";
 
 /**
@@ -11,7 +11,7 @@ import { addSocialProfileSchema } from "@/lib/validations";
 export async function POST(request: NextRequest) {
   let currentUser;
   try {
-    currentUser = await requireAuth(request);
+    currentUser = await requireClipper(request);
   } catch (error) {
     if (error instanceof NextResponse) return error;
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

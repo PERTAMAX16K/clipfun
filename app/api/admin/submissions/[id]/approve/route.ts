@@ -95,6 +95,9 @@ export async function POST(
   const rewardUnits = parseUnits(campaign.rewardPerSubmission.toString(), 6);
   const feeUnits = parseUnits(feePerSubmission.toString(), 6);
 
+  const { randomBytes } = await import("crypto");
+  const nonce = randomBytes(4).readUInt32BE(0);
+
   // Generate EIP-712 payout signature
   const payoutData = await generatePayoutSignature({
     campaignId: campaign.onchainCampaignId ?? 0,
@@ -102,6 +105,7 @@ export async function POST(
     clipperWallet: clipper.walletAddress as `0x${string}`,
     rewardAmount: rewardUnits,
     platformFee: feeUnits,
+    nonce,
   });
 
   // Update submission status

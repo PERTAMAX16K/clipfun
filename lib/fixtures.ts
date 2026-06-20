@@ -15,7 +15,7 @@ export const initialState: DemoState = {
       handle: "@orbitlabs",
       avatar: "OL",
       walletAddress: "0x71C2d35Ec8AE08b4a39Ea56Cd62A1Fb58E89A120",
-      role: "user",
+      role: "brand",
       bio: "Building delightful consumer crypto products.",
     },
     {
@@ -24,7 +24,7 @@ export const initialState: DemoState = {
       handle: "@nayacuts",
       avatar: "NC",
       walletAddress: "0x8BE1a789B06C5FBB123241D0A60160F348c72591",
-      role: "user",
+      role: "clipper",
       bio: "Short-form editor. Fast cuts, strong hooks, internet native.",
     },
     {

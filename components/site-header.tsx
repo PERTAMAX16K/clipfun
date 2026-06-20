@@ -84,7 +84,7 @@ export function SiteHeader() {
       <div className="border-b-2 border-ink bg-blue px-4 py-2 text-white">
         <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center text-[10px] font-black uppercase tracking-[0.12em] sm:text-xs">
           <span className="h-2 w-2 animate-pulse rounded-full bg-lime" />
-          Privy Auth · Base Sepolia · Campaign data still mocked
+          Privy Auth · Base Sepolia · Fully Integrated Onchain
         </div>
       </div>
       <header

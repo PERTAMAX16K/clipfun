@@ -13,10 +13,10 @@ import {
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
-import { useApiMutation } from "@/lib/hooks/use-api";
+import { getErrorMessage, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { CampaignDraft } from "@/lib/types";
+import type { Campaign, CampaignDraft } from "@/lib/types";
 import { cn, formatUsdc } from "@/lib/utils";
 
 const getDefaultDeadline = () => {
@@ -54,7 +54,7 @@ export default function CreateCampaignPage() {
 
 function CreateCampaignContent() {
   const router = useRouter();
-  const { mutate: createCampaign } = useApiMutation<any>();
+  const { mutate: createCampaign } = useApiMutation<Campaign>();
   const [step, setStep] = useState(1);
   const [draft, setDraft] = useState(initialDraft);
   const [requirementsText, setRequirementsText] = useState(
@@ -114,9 +114,9 @@ function CreateCampaignContent() {
         }
       });
       router.push(`/brand?created=${campaign.id}`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert("Error: " + e.message);
+      alert("Error: " + getErrorMessage(e));
       setSaving(false);
     }
   }

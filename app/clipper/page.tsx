@@ -20,12 +20,21 @@ import { useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import type { SocialProvider, Submission, Transaction } from "@/lib/types";
+import type { ActiveUser, Campaign, SocialProfile, SocialProvider, Submission, Transaction } from "@/lib/types";
 import { formatDate, formatUsdc, shortAddress } from "@/lib/utils";
-import { useWallets } from "@privy-io/react-auth";
+import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { createWalletClient, custom, publicActions, parseUnits, stringToHex, pad } from "viem";
 import { baseSepolia } from "viem/chains";
 import { CAMPAIGN_ESCROW_ADDRESS, campaignEscrowAbi } from "@/lib/contracts/campaign-escrow";
+import { getErrorMessage } from "@/lib/hooks/use-api";
+
+type PayoutResponse = {
+  rewardAmount: number | string;
+  feeAmount: number | string;
+  nonce: number | string;
+  expiry: number | string;
+  signature: `0x${string}`;
+};
 
 const platformIcons = {
   tiktok: Sparkles,
@@ -36,6 +45,7 @@ const platformIcons = {
 const statusTones = {
   SUBMITTED: "cream",
   UNDER_REVIEW: "orange",
+  APPROVED: "lime",
   REJECTED: "red",
   CLAIMABLE: "lime",
   PAID: "blue",
@@ -50,16 +60,17 @@ export default function ClipperDashboardPage() {
 }
 
 function ClipperDashboardContent() {
-  const { data: currentUser } = useApi<any>("/api/users/me");
+  const { ready, authenticated } = usePrivy();
+  const { data: currentUser } = useApi<ActiveUser>(ready && authenticated ? "/api/users/me" : null);
   const { data: allSubmissions, mutate: mutateSubmissions } = useApi<Submission[]>("/api/submissions");
-  const { data: allCampaigns } = useApi<any[]>("/api/campaigns");
-  const { data: socialProfiles, mutate: mutateProfiles } = useApi<any[]>("/api/users/social-profiles");
-  const { mutate: postClaimConfirmation } = useApiMutation<any>();
-  const { mutate: addProfileMutate } = useApiMutation<any>();
+  const { data: allCampaigns } = useApi<Campaign[]>("/api/campaigns");
+  const { data: socialProfiles, mutate: mutateProfiles } = useApi<SocialProfile[]>("/api/users/social-profiles");
+  const { mutate: postClaimConfirmation } = useApiMutation<Transaction>();
+  const { mutate: addProfileMutate } = useApiMutation<SocialProfile>();
 
   const clipper = currentUser;
   const clipperSubmissions = (allSubmissions || []).filter(
-    (submission) => submission.clipperId === clipper?.id,
+    (submission) => Boolean(clipper?.id) && submission.clipperId === clipper?.id,
   );
   const profiles = socialProfiles || [];
   const [claimTarget, setClaimTarget] = useState<Submission | null>(null);
@@ -109,7 +120,7 @@ function ClipperDashboardContent() {
         transport: custom(provider)
       }).extend(publicActions);
 
-      const campaign = (allCampaigns || []).find(c => c.id === claimTarget.campaignId);
+      const campaign = (allCampaigns || []).find((item) => item.id === claimTarget.campaignId);
       if (!campaign) throw new Error("Campaign not found");
 
       const payoutRes = await fetch(`/api/submissions/${claimTarget.id}/payout`);
@@ -117,7 +128,7 @@ function ClipperDashboardContent() {
         const errData = await payoutRes.json();
         throw new Error(errData.error || "Failed to fetch payout signature");
       }
-      const payoutData = await payoutRes.json();
+      const payoutData = (await payoutRes.json()) as PayoutResponse;
 
       const submissionIdBytes32 = `0x${claimTarget.id.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
 
@@ -127,13 +138,13 @@ function ClipperDashboardContent() {
         abi: campaignEscrowAbi,
         functionName: 'claimReward',
         args: [
-            BigInt(campaign.onchainCampaignId),
+            BigInt(campaign.onchainCampaignId ?? 0),
             submissionIdBytes32,
             BigInt(payoutData.rewardAmount),
             BigInt(payoutData.feeAmount),
             BigInt(payoutData.nonce),
             BigInt(payoutData.expiry),
-            payoutData.signature as `0x${string}`
+            payoutData.signature
         ]
       });
 
@@ -150,9 +161,9 @@ function ClipperDashboardContent() {
       await mutateSubmissions();
       setClaimResult({ ...transaction, hash: transactionHash });
       setClaimStep("done");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Claim failed:", err);
-      alert("Claim failed: " + err.message);
+      alert("Claim failed: " + getErrorMessage(err));
       setClaimStep("confirm");
     }
   }
@@ -173,9 +184,9 @@ function ClipperDashboardContent() {
       setProfileOpen(false);
       setUsername("");
       setProfileUrl("");
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setProfileError(e.message);
+      setProfileError(getErrorMessage(e));
     } finally {
       setSavingProfile(false);
     }
@@ -183,21 +194,22 @@ function ClipperDashboardContent() {
 
   return (
     <>
-      <section className="border-b-2 border-ink bg-lime">
-        <div className="page-shell grid gap-8 py-10 md:grid-cols-[1fr_auto] md:items-end">
-          <div>
-            <Badge tone="blue" className="mb-4">Creator workspace</Badge>
-            <h1 className="font-display text-5xl uppercase leading-[0.88] sm:text-7xl">
+      <section className="border-b-2 border-ink bg-cream">
+        <div className="page-shell relative grid min-h-[320px] gap-8 border-x-2 border-ink px-6 py-12 md:grid-cols-[1fr_auto] md:items-end sm:px-12">
+          <div className="absolute inset-0 dot-grid opacity-30 mix-blend-multiply" />
+          <div className="relative z-10">
+            <Badge tone="blue" className="mb-6 shadow-brutal-sm">Creator workspace</Badge>
+            <h1 className="font-display text-6xl uppercase leading-[0.85] tracking-[-0.04em] sm:text-8xl">
               Keep clipping,
               <br />
-              <span className="font-editorial text-blue">{clipper.displayName}.</span>
+              <span className="font-editorial text-blue">{clipper?.displayName ?? "Creator"}.</span>
             </h1>
-            <p className="mt-5 max-w-xl text-sm leading-6 text-ink/65">
+            <p className="mt-6 max-w-xl text-base leading-7 text-ink/75 sm:text-lg">
               Track reviews, claim approved rewards, and keep your creator
               profiles ready for the next brief.
             </p>
           </div>
-          <Button asChild size="lg" variant="black">
+          <Button asChild size="lg" variant="black" className="relative z-10 shadow-brutal">
             <Link href="/explore">Find a campaign</Link>
           </Button>
         </div>
@@ -206,39 +218,40 @@ function ClipperDashboardContent() {
       <section className="page-shell py-8">
         <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
           <div>
-            <div className="mb-7 grid border-2 border-ink bg-white shadow-brutal sm:grid-cols-3">
+            <div className="mb-10 grid gap-5 sm:grid-cols-3">
               {[
                 {
                   label: "Total earned",
                   value: formatUsdc(stats.earned),
                   icon: CircleDollarSign,
+                  bg: "bg-lime",
                 },
                 {
                   label: "Ready to claim",
                   value: stats.claimable,
                   icon: Wallet,
+                  bg: "bg-white",
                 },
                 {
                   label: "Under review",
                   value: stats.reviewing,
                   icon: Sparkles,
+                  bg: "bg-orange",
                 },
-              ].map((item, index) => {
+              ].map((item) => {
                 const IconComponent = item.icon;
                 return (
                   <div
                     key={item.label}
-                    className={`p-5 ${
-                      index < 2
-                        ? "border-b-2 sm:border-b-0 sm:border-r-2"
-                        : ""
-                    } border-ink`}
+                    className={`flex flex-col justify-between border-2 border-ink ${item.bg} p-6 shadow-brutal transition-transform hover:-translate-y-1 hover:shadow-brutal-lg`}
                   >
-                    <IconComponent size={19} className="mb-5 text-blue" />
-                    <p className="font-display text-3xl uppercase">{item.value}</p>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-ink/45">
-                      {item.label}
-                    </p>
+                    <IconComponent size={24} className="mb-8 text-ink" />
+                    <div>
+                      <p className="font-display text-4xl uppercase tracking-tight">{item.value}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-ink/60">
+                        {item.label}
+                      </p>
+                    </div>
                   </div>
                 );
               })}
@@ -253,41 +266,41 @@ function ClipperDashboardContent() {
             <div className="space-y-4">
               {clipperSubmissions.map((submission) => {
                 const campaign = (allCampaigns || []).find(
-                  (item: any) => item.id === submission.campaignId,
+                  (item) => item.id === submission.campaignId,
                 );
                 const Icon = platformIcons[submission.platform as keyof typeof platformIcons];
                 return (
                   <article
                     key={submission.id}
-                    className="border-2 border-ink bg-white shadow-brutal"
+                    className="border-2 border-ink bg-white shadow-brutal transition-all hover:shadow-brutal-lg"
                   >
-                    <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
-                      <div className="grid h-14 w-14 shrink-0 place-items-center border-2 border-ink bg-cream">
-                        <Icon size={23} />
+                    <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-center">
+                      <div className="grid h-16 w-16 shrink-0 place-items-center border-2 border-ink bg-cream shadow-brutal-sm">
+                        <Icon size={28} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <div className="mb-3 flex flex-wrap items-center gap-3">
                           <Badge tone={statusTones[submission.status]}>
                             {submission.status.replaceAll("_", " ")}
                           </Badge>
-                          <span className="text-[9px] font-bold uppercase text-ink/40">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-ink/40">
                             {formatDate(submission.submittedAt)}
                           </span>
                         </div>
-                        <h3 className="truncate font-display text-2xl uppercase">
+                        <h3 className="truncate font-display text-2xl uppercase tracking-tight">
                           {submission.campaignTitle}
                         </h3>
                         <a
                           href={submission.postUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="mt-1 flex items-center gap-1 truncate text-[10px] font-bold text-blue"
+                          className="mt-2 inline-flex items-center gap-1 truncate text-xs font-bold text-blue hover:underline"
                         >
-                          {submission.postUrl} <ExternalLink size={11} />
+                          {submission.postUrl} <ExternalLink size={12} />
                         </a>
                         {submission.rejectionReason && (
-                          <p className="mt-2 text-xs font-bold text-red-600">
-                            {submission.rejectionReason}
+                          <p className="mt-3 border-l-2 border-red-600 bg-red-50 py-2 pl-3 text-xs font-bold text-red-700">
+                            Reason: {submission.rejectionReason}
                           </p>
                         )}
                       </div>
@@ -321,26 +334,26 @@ function ClipperDashboardContent() {
             </div>
           </div>
 
-          <aside className="space-y-6">
-            <div className="border-2 border-ink bg-blue p-6 text-white shadow-brutal-lg">
-              <div className="flex items-center gap-3">
-                <span className="grid h-14 w-14 place-items-center border-2 border-ink bg-lime font-display text-lg text-ink">
-                  {clipper.avatar}
+          <aside className="space-y-8">
+            <div className="border-2 border-ink bg-blue p-7 text-white shadow-brutal-lg">
+              <div className="flex items-center gap-4">
+                <span className="grid h-16 w-16 place-items-center border-2 border-ink bg-lime font-display text-2xl text-ink shadow-brutal-sm">
+                  {clipper?.avatar ?? "CF"}
                 </span>
                 <div>
-                  <p className="font-display text-2xl uppercase">
-                    {clipper.displayName}
+                  <p className="font-display text-2xl uppercase tracking-tight">
+                    {clipper?.displayName ?? "Creator"}
                   </p>
-                  <p className="text-xs text-white/60">{clipper.handle}</p>
+                  <p className="text-xs font-bold tracking-widest text-white/70">{clipper?.handle ?? ""}</p>
                 </div>
               </div>
-              <p className="mt-5 text-sm leading-6 text-white/65">{clipper.bio}</p>
-              <div className="mt-5 border border-white/30 p-3">
-                <p className="text-[9px] font-black uppercase text-white/45">
+              <p className="mt-6 text-sm leading-6 text-white/80">{clipper?.bio}</p>
+              <div className="mt-6 border-2 border-ink bg-white p-4 text-ink shadow-brutal-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue">
                   Active payout wallet
                 </p>
-                <p className="mt-1 font-mono text-xs">
-                  {shortAddress(clipper.walletAddress)}
+                <p className="mt-1 font-mono text-xs font-bold">
+                  {shortAddress(clipper?.walletAddress ?? "")}
                 </p>
               </div>
             </div>
@@ -412,7 +425,7 @@ function ClipperDashboardContent() {
               <p className="font-display text-5xl text-blue">
                 {formatUsdc(
                   (allCampaigns || []).find(
-                    (item: any) => item.id === claimTarget.campaignId,
+                    (item) => item.id === claimTarget.campaignId,
                   )?.rewardPerSubmission ?? 0,
                 )}
               </p>
@@ -421,7 +434,7 @@ function ClipperDashboardContent() {
               <p className="text-[9px] font-black uppercase text-ink/40">
                 Destination
               </p>
-              <p className="mt-1 font-mono text-xs">{clipper.walletAddress}</p>
+              <p className="mt-1 font-mono text-xs">{clipper?.walletAddress}</p>
             </div>
             <p className="mt-5 text-xs leading-5 text-ink/55">
               The EIP-712 payout authorization is tied to this submission and

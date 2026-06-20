@@ -40,6 +40,10 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  if (currentUser.role !== "brand" && currentUser.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden. Brand or admin access required." }, { status: 403 });
+  }
+
   if (campaign.status !== "OPEN") {
     return NextResponse.json(
       { error: "Only OPEN campaigns can be closed" },
