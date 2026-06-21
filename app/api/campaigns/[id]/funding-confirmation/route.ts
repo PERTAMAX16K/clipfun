@@ -18,7 +18,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
+  try {
+    const { id } = await params;
 
   let currentUser;
   try {
@@ -69,10 +70,22 @@ export async function POST(
   });
 
   let receipt;
-  try {
-    receipt = await client.getTransactionReceipt({ hash: parsed.data.txHash as `0x${string}` });
-  } catch (err) {
-    return NextResponse.json({ error: "Failed to fetch transaction receipt" }, { status: 400 });
+  let attempts = 0;
+  while (attempts < 5) {
+    try {
+      receipt = await client.getTransactionReceipt({ hash: parsed.data.txHash as `0x${string}` });
+      if (receipt) break;
+    } catch (err) {
+      attempts++;
+      if (attempts >= 5) {
+        return NextResponse.json({ error: "Failed to fetch transaction receipt after 5 attempts" }, { status: 400 });
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  if (!receipt) {
+    return NextResponse.json({ error: "Transaction receipt is empty" }, { status: 400 });
   }
 
   if (receipt.status !== "success") {
@@ -122,5 +135,12 @@ export async function POST(
     status: "CONFIRMED",
   });
 
-  return NextResponse.json(updated);
+    return NextResponse.json(updated);
+  } catch (error: any) {
+    console.error("Unhandled API Error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error", message: error?.message || String(error) },
+      { status: 500 }
+    );
+  }
 }

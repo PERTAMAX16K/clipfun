@@ -14,7 +14,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,7 @@ function BrandDashboardContent() {
   const [fundTarget, setFundTarget] = useState<Campaign | null>(null);
   const [refundTarget, setRefundTarget] = useState<Campaign | null>(null);
   const [busy, setBusy] = useState(false);
+  const isBusyRef = useRef(false);
   const [result, setResult] = useState<Transaction | null>(null);
 
   const stats = useMemo(() => {
@@ -81,8 +82,9 @@ function BrandDashboardContent() {
   const { wallets } = useWallets();
 
   async function handleFund() {
-    if (!fundTarget) return;
+    if (!fundTarget || isBusyRef.current) return;
     setBusy(true);
+    isBusyRef.current = true;
 
     try {
       const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2") ?? wallets[0];
@@ -106,15 +108,24 @@ function BrandDashboardContent() {
       const totalFee = feeAmount * BigInt(fundTarget.maxWinners);
       const totalDeposit = totalReward + totalFee;
 
-      const { request: approveReq } = await client.simulateContract({
-        account: wallet.address as `0x${string}`,
+      const allowance = await client.readContract({
         address: USDC_ADDRESS,
         abi: erc20Abi,
-        functionName: 'approve',
-        args: [CAMPAIGN_ESCROW_ADDRESS, totalDeposit]
-      });
-      const approveTx = await client.writeContract(approveReq);
-      await client.waitForTransactionReceipt({ hash: approveTx });
+        functionName: 'allowance',
+        args: [wallet.address as `0x${string}`, CAMPAIGN_ESCROW_ADDRESS]
+      }) as bigint;
+
+      if (allowance < totalDeposit) {
+        const { request: approveReq } = await client.simulateContract({
+          account: wallet.address as `0x${string}`,
+          address: USDC_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [CAMPAIGN_ESCROW_ADDRESS, totalDeposit]
+        });
+        const approveTx = await client.writeContract(approveReq);
+        await client.waitForTransactionReceipt({ hash: approveTx });
+      }
 
       const metadataHash = `0x${fundTarget.id.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
       const deadline = BigInt(Math.floor(new Date(fundTarget.deadline).getTime() / 1000));
@@ -153,13 +164,22 @@ function BrandDashboardContent() {
         console.error("Failed to parse logs", err);
       }
       
-      const transaction = await postFunding(`/api/campaigns/${fundTarget.id}/funding-confirmation`, {
+      await postFunding(`/api/campaigns/${fundTarget.id}/funding-confirmation`, {
         method: "POST",
         body: { txHash: fundTx, onchainCampaignId }
       });
       await mutateCampaigns();
       await mutateTransactions();
-      setResult({ ...transaction, hash: fundTx });
+      setResult({
+        id: "fund-success",
+        type: "FUND",
+        campaignId: fundTarget.id,
+        campaignTitle: fundTarget.title,
+        amount: fundTarget.rewardPerSubmission * fundTarget.maxWinners * 1.05,
+        status: "CONFIRMED",
+        hash: fundTx,
+        createdAt: new Date().toISOString()
+      });
     } catch (err: unknown) {
       let errorMessage = "An unknown error occurred during transaction.";
       const message = getErrorMessage(err, "");
@@ -192,8 +212,10 @@ function BrandDashboardContent() {
         createdAt: new Date().toISOString(),
         errorMessage,
       });
+    } finally {
+      setBusy(false);
+      isBusyRef.current = false;
     }
-    setBusy(false);
   }
 
   async function handleRetry() {
@@ -209,12 +231,14 @@ function BrandDashboardContent() {
       }
     } finally {
       setBusy(false);
+      isBusyRef.current = false;
     }
   }
 
   async function handleRefund() {
-    if (!refundTarget) return;
+    if (!refundTarget || isBusyRef.current) return;
     setBusy(true);
+    isBusyRef.current = true;
 
     try {
       const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2") ?? wallets[0];
@@ -239,18 +263,59 @@ function BrandDashboardContent() {
       const refundTx = await client.writeContract(refundReq);
       await client.waitForTransactionReceipt({ hash: refundTx });
 
-      const transaction = await postRefund(`/api/campaigns/${refundTarget.id}/refund`, {
+      await postRefund(`/api/campaigns/${refundTarget.id}/refund`, {
         method: "POST",
         body: { txHash: refundTx }
       });
       await mutateCampaigns();
       await mutateTransactions();
-      setResult({ ...transaction, hash: refundTx });
+      setResult({
+        id: "refund-success",
+        type: "REFUND",
+        campaignId: refundTarget.id,
+        campaignTitle: refundTarget.title,
+        amount: (refundTarget.maxWinners - refundTarget.paidWinners) * refundTarget.rewardPerSubmission,
+        status: "CONFIRMED",
+        hash: refundTx,
+        createdAt: new Date().toISOString()
+      });
     } catch (err: unknown) {
       console.error(err);
-      alert("Contract refund failed: " + getErrorMessage(err));
+      let errorMessage = "An unknown error occurred during transaction.";
+      const message = getErrorMessage(err, "");
+      const shortMessage =
+        typeof err === "object" &&
+        err !== null &&
+        "shortMessage" in err &&
+        typeof err.shortMessage === "string"
+          ? err.shortMessage
+          : "";
+
+      if (message.includes("User rejected")) {
+        errorMessage = "You rejected the transaction in your wallet.";
+      } else if (message.includes("CampaignNotEnded")) {
+        errorMessage = "Campaign has not ended yet. You can only refund after the deadline.";
+      } else if (shortMessage) {
+        errorMessage = shortMessage;
+      } else if (message) {
+        errorMessage = message.slice(0, 100);
+      }
+
+      setResult({
+        id: "err-refund",
+        type: "REFUND",
+        campaignId: refundTarget.id,
+        campaignTitle: refundTarget.title,
+        amount: (refundTarget.maxWinners - refundTarget.paidWinners) * refundTarget.rewardPerSubmission,
+        status: "FAILED",
+        hash: "",
+        createdAt: new Date().toISOString(),
+        errorMessage,
+      });
+    } finally {
+      setBusy(false);
+      isBusyRef.current = false;
     }
-    setBusy(false);
   }
 
   return (
@@ -366,6 +431,7 @@ function BrandDashboardContent() {
                         setResult(null);
                       }}
                       className="shadow-brutal-sm relative"
+                      disabled={busy}
                     >
                       <Wallet size={16} /> Fund & publish
                     </Button>
@@ -378,6 +444,7 @@ function BrandDashboardContent() {
                         setResult(null);
                       }}
                       className="shadow-brutal-sm"
+                      disabled={busy}
                     >
                       Close & refund
                     </Button>
@@ -508,12 +575,18 @@ function BrandDashboardContent() {
                 )}
               </p>
             </div>
+            {new Date(refundTarget.deadline).getTime() > Date.now() && (
+              <div className="mt-4 flex items-center gap-2 text-xs font-bold text-orange">
+                <Clock3 size={14} />
+                <span>Available after deadline ({formatDate(refundTarget.deadline)})</span>
+              </div>
+            )}
             <Button
               className="mt-5 w-full"
               variant="orange"
               size="lg"
               onClick={handleRefund}
-              disabled={busy}
+              disabled={busy || new Date(refundTarget.deadline).getTime() > Date.now()}
             >
               {busy ? "Confirming refund..." : "Close & refund remaining"}
             </Button>

@@ -62,9 +62,9 @@ function AdminContent() {
     if (!selected) return;
     setBusy(true);
     try {
-      await reviewSubmission(`/api/submissions/${selected.id}/review`, {
+      await reviewSubmission(`/api/admin/submissions/${selected.id}/${decision}`, {
         method: "POST",
-        body: { decision, reason },
+        body: decision === "reject" ? { reason } : undefined,
       });
       await mutateList();
       setDone(true);

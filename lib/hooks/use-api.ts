@@ -37,7 +37,8 @@ export function useApi<Data = unknown, Error = ApiError>(
     
     if (!res.ok) {
       const info = await res.json().catch(() => ({}));
-      throw new ApiError("An error occurred while fetching the data.", res.status, info);
+      const errorMsg = info?.error || info?.message || "An error occurred while fetching the data.";
+      throw new ApiError(errorMsg, res.status, info);
     }
 
     return res.json() as Promise<Data>;
@@ -72,7 +73,8 @@ export function useApiMutation<Data = unknown>() {
 
     if (!res.ok) {
       const info = await res.json().catch(() => ({}));
-      throw new ApiError("An error occurred while modifying the data.", res.status, info);
+      const errorMsg = info?.error || info?.message || "An error occurred while modifying the data.";
+      throw new ApiError(errorMsg, res.status, info);
     }
 
     return res.json() as Promise<Data>;

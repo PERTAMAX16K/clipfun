@@ -11,7 +11,7 @@ const submitSchema = z.object({
   platform: z.enum(["youtube", "tiktok", "instagram"]),
 });
 
-export const POST = withClipper<any>(async (request: NextRequest, user) => {
+export const POST = withClipper<unknown>(async (request: NextRequest, user) => {
   const body = await request.json();
   const parsed = submitSchema.safeParse(body);
 
@@ -38,14 +38,6 @@ export const POST = withClipper<any>(async (request: NextRequest, user) => {
     return NextResponse.json({ error: "Campaign is not open for submissions" }, { status: 400 });
   }
 
-  // Check if clipper has already submitted
-  const existingSub = await db
-    .select()
-    .from(submissions)
-    .where(eq(submissions.clipperId, user.id))
-    .limit(1);
-
-  // We allow multiple submissions conceptually, but let's just insert
   const [submission] = await db
     .insert(submissions)
     .values({

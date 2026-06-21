@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Megaphone,
   Scissors,
@@ -22,6 +22,18 @@ export default function OnboardingPage() {
   const [selected, setSelected] = useState<"clipper" | "brand" | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!activeUser?.role) return;
+
+    router.replace(
+      activeUser.role === "brand"
+        ? "/brand"
+        : activeUser.role === "admin"
+          ? "/admin"
+          : "/clipper",
+    );
+  }, [activeUser?.role, router]);
 
   // If not logged in, prompt login
   if (!ready || isLoading) {
@@ -57,8 +69,13 @@ export default function OnboardingPage() {
 
   // If already onboarded, redirect
   if (activeUser.role) {
-    router.replace(activeUser.role === "brand" ? "/brand" : activeUser.role === "admin" ? "/admin" : "/clipper");
-    return null;
+    return (
+      <section className="page-shell grid min-h-[680px] place-items-center py-16">
+        <p className="text-xs font-black uppercase tracking-widest text-blue">
+          Opening your dashboard...
+        </p>
+      </section>
+    );
   }
 
   async function handleConfirm() {

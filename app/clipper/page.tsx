@@ -12,6 +12,7 @@ import {
   Sparkles,
   UserRound,
   Wallet,
+  X,
   Youtube,
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
@@ -60,7 +61,7 @@ export default function ClipperDashboardPage() {
 }
 
 function ClipperDashboardContent() {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, getAccessToken } = usePrivy();
   const { data: currentUser } = useApi<ActiveUser>(ready && authenticated ? "/api/users/me" : null);
   const { data: allSubmissions, mutate: mutateSubmissions } = useApi<Submission[]>("/api/submissions");
   const { data: allCampaigns } = useApi<Campaign[]>("/api/campaigns");
@@ -123,7 +124,10 @@ function ClipperDashboardContent() {
       const campaign = (allCampaigns || []).find((item) => item.id === claimTarget.campaignId);
       if (!campaign) throw new Error("Campaign not found");
 
-      const payoutRes = await fetch(`/api/submissions/${claimTarget.id}/payout`);
+      const token = await getAccessToken();
+      const payoutRes = await fetch(`/api/submissions/${claimTarget.id}/payout`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!payoutRes.ok) {
         const errData = await payoutRes.json();
         throw new Error(errData.error || "Failed to fetch payout signature");
@@ -143,7 +147,7 @@ function ClipperDashboardContent() {
             BigInt(payoutData.rewardAmount),
             BigInt(payoutData.feeAmount),
             BigInt(payoutData.nonce),
-            BigInt(payoutData.expiry),
+            BigInt(Math.floor(new Date(payoutData.expiry).getTime() / 1000)),
             payoutData.signature
         ]
       });
@@ -159,12 +163,51 @@ function ClipperDashboardContent() {
       });
       
       await mutateSubmissions();
-      setClaimResult({ ...transaction, hash: transactionHash });
+      setClaimResult({ 
+        id: transaction.id || "success",
+        type: "CLAIM",
+        campaignId: claimTarget.campaignId,
+        userId: claimTarget.clipperId,
+        amount: campaign.rewardPerSubmission,
+        status: "CONFIRMED",
+        hash: transactionHash,
+        createdAt: new Date().toISOString()
+      } as any);
       setClaimStep("done");
     } catch (err: unknown) {
-      console.error("Claim failed:", err);
-      alert("Claim failed: " + getErrorMessage(err));
-      setClaimStep("confirm");
+      console.log("Claim failed/rejected", getErrorMessage(err));
+      let errorMessage = "An unknown error occurred during transaction.";
+      const message = getErrorMessage(err, "");
+      const shortMessage =
+        typeof err === "object" &&
+        err !== null &&
+        "shortMessage" in err &&
+        typeof err.shortMessage === "string"
+          ? err.shortMessage
+          : "";
+
+      if (message.includes("User rejected")) {
+        errorMessage = "You rejected the transaction in your wallet.";
+      } else if (message.includes("insufficient funds") || message.includes("exceeds the balance")) {
+        errorMessage = "You don't have enough testnet ETH to pay the gas fee. Please use a Base Sepolia faucet.";
+      } else if (shortMessage) {
+        errorMessage = shortMessage;
+      } else if (message) {
+        errorMessage = message.slice(0, 100);
+      }
+
+      setClaimResult({
+        id: "err-claim",
+        type: "CLAIM",
+        campaignId: claimTarget.campaignId,
+        userId: claimTarget.clipperId,
+        amount: 0,
+        status: "FAILED",
+        hash: "",
+        createdAt: new Date().toISOString(),
+        errorMessage,
+      } as any);
+      setClaimStep("done");
     }
   }
 
@@ -458,20 +501,30 @@ function ClipperDashboardContent() {
         )}
         {claimStep === "done" && claimResult && (
           <div className="text-center">
-            <div className="mx-auto grid h-20 w-20 place-items-center border-2 border-ink bg-lime shadow-brutal">
-              <Check size={36} />
+            <div className={`mx-auto grid h-20 w-20 place-items-center border-2 border-ink shadow-brutal ${claimResult.status === "FAILED" ? "bg-orange" : "bg-lime"}`}>
+              {claimResult.status === "FAILED" ? <X size={36} className="text-white" /> : <Check size={36} />}
             </div>
-            <p className="mt-6 font-display text-4xl text-blue">
-              +{formatUsdc(claimResult.amount)}
-            </p>
-            <p className="mt-2 text-sm text-ink/55">
-              The reward status is now PAID. A second claim is blocked.
-            </p>
-            <Button asChild className="mt-6 w-full" variant="outline">
-              <Link href="/activity">
-                View transaction <ExternalLink size={15} />
-              </Link>
-            </Button>
+            
+            {claimResult.status === "FAILED" ? (
+              <>
+                <p className="mt-6 font-display text-4xl text-orange">Claim Failed</p>
+                <p className="mt-2 text-sm text-ink/70">{(claimResult as any).errorMessage}</p>
+              </>
+            ) : (
+              <>
+                <p className="mt-6 font-display text-4xl text-blue">
+                  +{formatUsdc(claimResult.amount)}
+                </p>
+                <p className="mt-2 text-sm text-ink/55">
+                  The reward status is now PAID. A second claim is blocked.
+                </p>
+                <Button asChild className="mt-6 w-full" variant="outline">
+                  <Link href="/activity">
+                    View transaction <ExternalLink size={15} />
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
         )}
       </Modal>

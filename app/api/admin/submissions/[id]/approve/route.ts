@@ -118,6 +118,17 @@ export async function POST(
     })
     .where(eq(submissions.id, id));
 
+  // Increment paidWinners and update status if max reached
+  const newPaidWinners = campaign.paidWinners + 1;
+  const newStatus = newPaidWinners >= campaign.maxWinners ? "COMPLETED" : "OPEN";
+  await db
+    .update(campaigns)
+    .set({
+      paidWinners: newPaidWinners,
+      status: newStatus,
+    })
+    .where(eq(campaigns.id, campaign.id));
+
   // Create payout authorization record
   const [payout] = await db
     .insert(payoutAuthorizations)

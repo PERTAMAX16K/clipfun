@@ -7,29 +7,12 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import type { Chain } from "viem";
+import { StyleSheetManager } from "styled-components";
+import { baseSepolia } from "viem/chains";
 
-const baseSepolia = {
-  id: 84532,
-  name: "Base Sepolia",
-  nativeCurrency: {
-    name: "Sepolia Ether",
-    symbol: "ETH",
-    decimals: 18,
-  },
-  rpcUrls: {
-    default: {
-      http: ["https://sepolia.base.org"],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: "BaseScan",
-      url: "https://sepolia.basescan.org",
-    },
-  },
-  testnet: true,
-} as const satisfies Chain;
+function shouldForwardPrivyProp(propName: string, target: unknown) {
+  return typeof target !== "string" || propName !== "isActive";
+}
 
 interface PrivySession {
   configured: boolean;
@@ -139,27 +122,33 @@ export function AppProviders({ children }: { children: ReactNode }) {
     );
   }
 
+  const optionalClientId = clientId ? { clientId } : {};
+
   return (
-    <PrivyProvider
-      appId={appId}
-      clientId={clientId || undefined}
-      config={{
-        defaultChain: baseSepolia,
-        supportedChains: [baseSepolia],
-        embeddedWallets: {
-          ethereum: {
-            createOnLogin: "users-without-wallets",
+    <StyleSheetManager shouldForwardProp={shouldForwardPrivyProp}>
+      <PrivyProvider
+        appId={appId}
+        {...optionalClientId}
+        config={{
+          defaultChain: baseSepolia,
+          supportedChains: [baseSepolia],
+          externalWallets: {
+            disableAllExternalWallets: true,
           },
-        },
-        appearance: {
-          theme: "light",
-          accentColor: "#304FFE",
-          logo: undefined,
-        },
-      }}
-    >
-      <PrivySessionBridge>{children}</PrivySessionBridge>
-    </PrivyProvider>
+          embeddedWallets: {
+            ethereum: {
+              createOnLogin: "users-without-wallets",
+            },
+          },
+          appearance: {
+            theme: "light",
+            accentColor: "#304FFE",
+          },
+        }}
+      >
+        <PrivySessionBridge>{children}</PrivySessionBridge>
+      </PrivyProvider>
+    </StyleSheetManager>
   );
 }
 

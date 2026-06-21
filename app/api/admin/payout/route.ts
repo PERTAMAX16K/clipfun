@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { submissions, payoutAuthorizations, campaigns, users } from "@/db/schema";
 import { withAdmin } from "@/lib/server/auth";
@@ -9,7 +9,7 @@ const payoutSchema = z.object({
   submissionId: z.string().uuid(),
 });
 
-export const POST = withAdmin<any>(async (request: NextRequest, user) => {
+export const POST = withAdmin<unknown>(async (request: NextRequest, user) => {
   const body = await request.json();
   const parsed = payoutSchema.safeParse(body);
 

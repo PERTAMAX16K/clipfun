@@ -21,11 +21,14 @@ export async function requireAuth(
   request: NextRequest,
 ): Promise<AuthenticatedUser> {
   let verified: VerifiedUser;
+  const authorization = request.headers.get("Authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    throw NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
-    verified = await verifyPrivyToken(
-      request.headers.get("Authorization"),
-    );
+    verified = await verifyPrivyToken(authorization);
   } catch (error) {
     console.error("verifyPrivyToken error:", error);
     throw NextResponse.json({ error: "Unauthorized" }, { status: 401 });

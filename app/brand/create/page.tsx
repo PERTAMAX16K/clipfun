@@ -176,7 +176,7 @@ function CreateCampaignContent() {
               </div>
               <div>
                 <label className="label" htmlFor="title">
-                  Campaign title · max 50 characters
+                  Campaign title · 5-50 characters
                 </label>
                 <input
                   id="title"
@@ -193,7 +193,9 @@ function CreateCampaignContent() {
                 </p>
               </div>
               <div>
-                <label className="label" htmlFor="summary">One-line summary</label>
+                <label className="label" htmlFor="summary">
+                  One-line summary · min 20 characters
+                </label>
                 <input
                   id="summary"
                   className="field"
@@ -203,9 +205,14 @@ function CreateCampaignContent() {
                     setDraft({ ...draft, summary: event.target.value })
                   }
                 />
+                <p className="mt-2 text-right text-[9px] font-bold text-ink/40">
+                  {draft.summary.trim().length}/20 min
+                </p>
               </div>
               <div>
-                <label className="label" htmlFor="brief">Detailed brief</label>
+                <label className="label" htmlFor="brief">
+                  Detailed brief · min 40 characters
+                </label>
                 <textarea
                   id="brief"
                   className="field min-h-36 resize-y"
@@ -215,6 +222,9 @@ function CreateCampaignContent() {
                     setDraft({ ...draft, brief: event.target.value })
                   }
                 />
+                <p className="mt-2 text-right text-[9px] font-bold text-ink/40">
+                  {draft.brief.trim().length}/40 min
+                </p>
               </div>
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
@@ -468,12 +478,12 @@ function CreateCampaignContent() {
             Live preview
           </p>
           <div className="mt-5 border-2 border-ink bg-cream p-4 text-ink shadow-brutal">
-            <div className="grid h-44 place-items-center border-2 border-ink bg-orange">
-              <span className="font-display text-3xl uppercase text-white">
+            <div className="grid h-44 place-items-center border-2 border-ink bg-orange overflow-hidden px-4">
+              <span className="break-all text-center font-display text-3xl uppercase text-white line-clamp-3">
                 {draft.title ? draft.title.slice(0, 18) : "Your campaign"}
               </span>
             </div>
-            <p className="mt-4 font-display text-2xl uppercase leading-none">
+            <p className="mt-4 break-words font-display text-2xl uppercase leading-none">
               {draft.title || "Campaign title"}
             </p>
             <p className="mt-2 line-clamp-3 text-xs leading-5 text-ink/55">
