@@ -14,19 +14,24 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { useApi, useApiMutation } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import type { Campaign, Transaction } from "@/lib/types";
+import type { ActiveUser, Campaign, Transaction } from "@/lib/types";
 import { formatDate, formatUsdc } from "@/lib/utils";
-import { useWallets } from "@privy-io/react-auth";
+import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { createWalletClient, custom, publicActions, parseUnits, stringToHex, pad } from "viem";
 import { baseSepolia } from "viem/chains";
 import { USDC_ADDRESS, erc20Abi } from "@/lib/contracts/usdc";
 import { CAMPAIGN_ESCROW_ADDRESS, campaignEscrowAbi } from "@/lib/contracts/campaign-escrow";
+import { getErrorMessage } from "@/lib/hooks/use-api";
+
+type CampaignCreatedArgs = {
+  campaignId: bigint | number;
+};
 
 export default function BrandDashboardPage() {
   return (
@@ -37,20 +42,22 @@ export default function BrandDashboardPage() {
 }
 
 function BrandDashboardContent() {
-  const { data: currentUser } = useApi<any>("/api/users/me");
+  const { ready, authenticated } = usePrivy();
+  const { data: currentUser } = useApi<ActiveUser>(ready && authenticated ? "/api/users/me" : null);
   const { data: allCampaigns, mutate: mutateCampaigns } = useApi<Campaign[]>("/api/campaigns");
   const { data: allTransactions, mutate: mutateTransactions } = useApi<Transaction[]>("/api/transactions");
-  const { mutate: postFunding } = useApiMutation<any>();
-  const { mutate: postRefund } = useApiMutation<any>();
+  const { mutate: postFunding } = useApiMutation<Transaction>();
+  const { mutate: postRefund } = useApiMutation<Transaction>();
   const { mutate: retryTx } = useApiMutation<Transaction>();
 
   const brandUser = currentUser;
   const brandCampaigns = (allCampaigns || []).filter(
-    (campaign) => campaign.brandId === brandUser?.id,
+    (campaign) => Boolean(brandUser?.id) && campaign.brandId === brandUser?.id,
   );
   const [fundTarget, setFundTarget] = useState<Campaign | null>(null);
   const [refundTarget, setRefundTarget] = useState<Campaign | null>(null);
   const [busy, setBusy] = useState(false);
+  const isBusyRef = useRef(false);
   const [result, setResult] = useState<Transaction | null>(null);
 
   const stats = useMemo(() => {
@@ -75,12 +82,17 @@ function BrandDashboardContent() {
   const { wallets } = useWallets();
 
   async function handleFund() {
-    if (!fundTarget) return;
+    if (!fundTarget || isBusyRef.current) return;
     setBusy(true);
+    isBusyRef.current = true;
 
     try {
       const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2") ?? wallets[0];
       if (!wallet) throw new Error("No wallet connected");
+
+      if (wallet.chainId !== `eip155:${baseSepolia.id}`) {
+        await wallet.switchChain(baseSepolia.id);
+      }
 
       const provider = await wallet.getEthereumProvider();
       const client = createWalletClient({
@@ -96,15 +108,24 @@ function BrandDashboardContent() {
       const totalFee = feeAmount * BigInt(fundTarget.maxWinners);
       const totalDeposit = totalReward + totalFee;
 
-      const { request: approveReq } = await client.simulateContract({
-        account: wallet.address as `0x${string}`,
+      const allowance = await client.readContract({
         address: USDC_ADDRESS,
         abi: erc20Abi,
-        functionName: 'approve',
-        args: [CAMPAIGN_ESCROW_ADDRESS, totalDeposit]
-      });
-      const approveTx = await client.writeContract(approveReq);
-      await client.waitForTransactionReceipt({ hash: approveTx });
+        functionName: 'allowance',
+        args: [wallet.address as `0x${string}`, CAMPAIGN_ESCROW_ADDRESS]
+      }) as bigint;
+
+      if (allowance < totalDeposit) {
+        const { request: approveReq } = await client.simulateContract({
+          account: wallet.address as `0x${string}`,
+          address: USDC_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [CAMPAIGN_ESCROW_ADDRESS, totalDeposit]
+        });
+        const approveTx = await client.writeContract(approveReq);
+        await client.waitForTransactionReceipt({ hash: approveTx });
+      }
 
       const metadataHash = `0x${fundTarget.id.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
       const deadline = BigInt(Math.floor(new Date(fundTarget.deadline).getTime() / 1000));
@@ -134,24 +155,52 @@ function BrandDashboardContent() {
               topics: log.topics,
             });
             if (decoded.eventName === 'CampaignCreated') {
-              onchainCampaignId = Number((decoded.args as any).campaignId);
+              onchainCampaignId = Number((decoded.args as CampaignCreatedArgs).campaignId);
               break;
             }
-          } catch(e) {}
+          } catch {}
         }
       } catch(err) {
         console.error("Failed to parse logs", err);
       }
       
-      const transaction = await postFunding(`/api/campaigns/${fundTarget.id}/funding-confirmation`, {
+      await postFunding(`/api/campaigns/${fundTarget.id}/funding-confirmation`, {
         method: "POST",
         body: { txHash: fundTx, onchainCampaignId }
       });
       await mutateCampaigns();
       await mutateTransactions();
-      setResult({ ...transaction, hash: fundTx });
-    } catch (err: any) {
-      console.error(err);
+      setResult({
+        id: "fund-success",
+        type: "FUND",
+        campaignId: fundTarget.id,
+        campaignTitle: fundTarget.title,
+        amount: fundTarget.rewardPerSubmission * fundTarget.maxWinners * 1.05,
+        status: "CONFIRMED",
+        hash: fundTx,
+        createdAt: new Date().toISOString()
+      });
+    } catch (err: unknown) {
+      let errorMessage = "An unknown error occurred during transaction.";
+      const message = getErrorMessage(err, "");
+      const shortMessage =
+        typeof err === "object" &&
+        err !== null &&
+        "shortMessage" in err &&
+        typeof err.shortMessage === "string"
+          ? err.shortMessage
+          : "";
+
+      if (message.includes("User rejected")) {
+        errorMessage = "You rejected the transaction in your wallet.";
+      } else if (message.includes("insufficient funds") || message.includes("exceeds balance")) {
+        errorMessage = "You don't have enough testnet ETH or USDC for this transaction.";
+      } else if (shortMessage) {
+        errorMessage = shortMessage;
+      } else if (message) {
+        errorMessage = message.slice(0, 100);
+      }
+
       setResult({
         id: "err-fund",
         type: "FUND",
@@ -160,10 +209,13 @@ function BrandDashboardContent() {
         amount: fundTarget.rewardPerSubmission * fundTarget.maxWinners * 1.05,
         status: "FAILED",
         hash: "",
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        errorMessage,
       });
+    } finally {
+      setBusy(false);
+      isBusyRef.current = false;
     }
-    setBusy(false);
   }
 
   async function handleRetry() {
@@ -179,12 +231,14 @@ function BrandDashboardContent() {
       }
     } finally {
       setBusy(false);
+      isBusyRef.current = false;
     }
   }
 
   async function handleRefund() {
-    if (!refundTarget) return;
+    if (!refundTarget || isBusyRef.current) return;
     setBusy(true);
+    isBusyRef.current = true;
 
     try {
       const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2") ?? wallets[0];
@@ -209,18 +263,59 @@ function BrandDashboardContent() {
       const refundTx = await client.writeContract(refundReq);
       await client.waitForTransactionReceipt({ hash: refundTx });
 
-      const transaction = await postRefund(`/api/campaigns/${refundTarget.id}/refund`, {
+      await postRefund(`/api/campaigns/${refundTarget.id}/refund`, {
         method: "POST",
         body: { txHash: refundTx }
       });
       await mutateCampaigns();
       await mutateTransactions();
-      setResult({ ...transaction, hash: refundTx });
-    } catch (err: any) {
+      setResult({
+        id: "refund-success",
+        type: "REFUND",
+        campaignId: refundTarget.id,
+        campaignTitle: refundTarget.title,
+        amount: (refundTarget.maxWinners - refundTarget.paidWinners) * refundTarget.rewardPerSubmission,
+        status: "CONFIRMED",
+        hash: refundTx,
+        createdAt: new Date().toISOString()
+      });
+    } catch (err: unknown) {
       console.error(err);
-      alert("Contract refund failed: " + err.message);
+      let errorMessage = "An unknown error occurred during transaction.";
+      const message = getErrorMessage(err, "");
+      const shortMessage =
+        typeof err === "object" &&
+        err !== null &&
+        "shortMessage" in err &&
+        typeof err.shortMessage === "string"
+          ? err.shortMessage
+          : "";
+
+      if (message.includes("User rejected")) {
+        errorMessage = "You rejected the transaction in your wallet.";
+      } else if (message.includes("CampaignNotEnded")) {
+        errorMessage = "Campaign has not ended yet. You can only refund after the deadline.";
+      } else if (shortMessage) {
+        errorMessage = shortMessage;
+      } else if (message) {
+        errorMessage = message.slice(0, 100);
+      }
+
+      setResult({
+        id: "err-refund",
+        type: "REFUND",
+        campaignId: refundTarget.id,
+        campaignTitle: refundTarget.title,
+        amount: (refundTarget.maxWinners - refundTarget.paidWinners) * refundTarget.rewardPerSubmission,
+        status: "FAILED",
+        hash: "",
+        createdAt: new Date().toISOString(),
+        errorMessage,
+      });
+    } finally {
+      setBusy(false);
+      isBusyRef.current = false;
     }
-    setBusy(false);
   }
 
   return (
@@ -233,11 +328,11 @@ function BrandDashboardContent() {
               Good morning,
               <br />
               <span className="font-editorial text-orange">
-                {brandUser.displayName}.
+                {brandUser?.displayName ?? "Brand"}.
               </span>
             </h1>
           </div>
-          <Button asChild size="lg">
+          <Button asChild size="lg" className="relative z-10 shadow-brutal">
             <Link href="/brand/create">
               <FilePlus2 size={18} /> Create campaign
             </Link>
@@ -246,34 +341,39 @@ function BrandDashboardContent() {
       </section>
 
       <section className="page-shell py-8">
-        <div className="grid border-2 border-ink bg-white shadow-brutal md:grid-cols-4">
+        <div className="mb-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: "Open campaigns", value: stats.open, icon: Clock3 },
+            { label: "Open campaigns", value: stats.open, icon: Clock3, bg: "bg-white" },
             {
               label: "USDC committed",
               value: formatUsdc(stats.committed),
               icon: Wallet,
+              bg: "bg-orange",
             },
-            { label: "Submissions", value: stats.submissions, icon: Users },
+            { label: "Submissions", value: stats.submissions, icon: Users, bg: "bg-cream" },
             {
               label: "Rewards paid",
               value: formatUsdc(stats.paid),
               icon: CircleDollarSign,
+              bg: "bg-lime",
             },
-          ].map((stat, index) => (
-            <div
-              key={stat.label}
-              className={`p-5 ${
-                index < 3 ? "border-b-2 md:border-b-0 md:border-r-2" : ""
-              } border-ink`}
-            >
-              <stat.icon size={19} className="mb-5 text-blue" />
-              <p className="font-display text-3xl uppercase">{stat.value}</p>
-              <p className="mt-1 text-[9px] font-black uppercase tracking-widest text-ink/45">
-                {stat.label}
-              </p>
-            </div>
-          ))}
+          ].map((stat) => {
+            const IconComponent = stat.icon;
+            return (
+              <div
+                key={stat.label}
+                className={`flex flex-col justify-between border-2 border-ink ${stat.bg} p-6 shadow-brutal transition-transform hover:-translate-y-1 hover:shadow-brutal-lg`}
+              >
+                <IconComponent size={24} className="mb-8 text-ink" />
+                <div>
+                  <p className="font-display text-4xl uppercase tracking-tight">{stat.value}</p>
+                  <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-ink/60">
+                    {stat.label}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -287,16 +387,16 @@ function BrandDashboardContent() {
           </div>
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-6">
           {brandCampaigns.map((campaign) => {
             const remaining = campaign.maxWinners - campaign.paidWinners;
             return (
               <article
                 key={campaign.id}
-                className="grid border-2 border-ink bg-white shadow-brutal md:grid-cols-[1fr_auto]"
+                className="grid border-2 border-ink bg-white shadow-brutal transition-all hover:shadow-brutal-lg md:grid-cols-[1fr_auto]"
               >
-                <div className="p-5 sm:p-7">
-                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div className="p-6 sm:p-8">
+                  <div className="mb-4 flex flex-wrap items-center gap-3">
                     <Badge
                       tone={
                         campaign.status === "OPEN"
@@ -310,26 +410,28 @@ function BrandDashboardContent() {
                     </Badge>
                     <Badge tone="cream">{campaign.campaignCode}</Badge>
                   </div>
-                  <h3 className="font-display text-3xl uppercase leading-none sm:text-4xl">
+                  <h3 className="font-display text-3xl uppercase leading-none tracking-tight sm:text-4xl">
                     {campaign.title}
                   </h3>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/55">
+                  <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
                     {campaign.summary}
                   </p>
-                  <div className="mt-6 flex flex-wrap gap-x-7 gap-y-3 text-[10px] font-black uppercase">
-                    <span>{formatUsdc(campaign.rewardPerSubmission)} / clip</span>
-                    <span>{campaign.submissionCount} submissions</span>
-                    <span>{remaining} spots remaining</span>
-                    <span>Ends {formatDate(campaign.deadline)}</span>
+                  <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-[10px] font-black uppercase tracking-wider text-ink/60">
+                    <span className="flex items-center gap-1.5"><CircleDollarSign size={14} className="text-blue" /> {formatUsdc(campaign.rewardPerSubmission)} / clip</span>
+                    <span className="flex items-center gap-1.5"><Users size={14} className="text-blue" /> {campaign.submissionCount} submissions</span>
+                    <span className="flex items-center gap-1.5"><Check size={14} className="text-blue" /> {remaining} spots remaining</span>
+                    <span className="flex items-center gap-1.5"><Clock3 size={14} className="text-blue" /> Ends {formatDate(campaign.deadline)}</span>
                   </div>
                 </div>
-                <div className="flex min-w-52 flex-col justify-center gap-3 border-t-2 border-ink bg-cream p-5 md:border-l-2 md:border-t-0">
+                <div className="flex min-w-64 flex-col justify-center gap-3 border-t-2 border-ink bg-cream p-6 md:border-l-2 md:border-t-0">
                   {campaign.status === "AWAITING_FUNDING" && (
                     <Button
                       onClick={() => {
                         setFundTarget(campaign);
                         setResult(null);
                       }}
+                      className="shadow-brutal-sm relative"
+                      disabled={busy}
                     >
                       <Wallet size={16} /> Fund & publish
                     </Button>
@@ -341,11 +443,13 @@ function BrandDashboardContent() {
                         setRefundTarget(campaign);
                         setResult(null);
                       }}
+                      className="shadow-brutal-sm"
+                      disabled={busy}
                     >
                       Close & refund
                     </Button>
                   )}
-                  <Button asChild variant="ghost">
+                  <Button asChild variant="ghost" className="hover:underline">
                     <Link href={`/campaigns/${campaign.id}`}>
                       View campaign <ArrowRight size={15} />
                     </Link>
@@ -362,7 +466,6 @@ function BrandDashboardContent() {
         onClose={() => {
           setFundTarget(null);
           setResult(null);
-          setSimulateFailure(false);
         }}
         eyebrow="Wallet transaction"
         title={
@@ -381,8 +484,7 @@ function BrandDashboardContent() {
               <AlertTriangle size={34} />
             </div>
             <p className="mt-6 text-sm leading-6 text-ink/60">
-              The wallet rejected this transaction. Your campaign remains
-              hidden and no state was lost.
+              {result.errorMessage || "The wallet rejected this transaction. Your campaign remains hidden and no state was lost."}
             </p>
             <Button className="mt-6 w-full" onClick={handleRetry} disabled={busy}>
               {busy ? (
@@ -473,12 +575,18 @@ function BrandDashboardContent() {
                 )}
               </p>
             </div>
+            {new Date(refundTarget.deadline).getTime() > Date.now() && (
+              <div className="mt-4 flex items-center gap-2 text-xs font-bold text-orange">
+                <Clock3 size={14} />
+                <span>Available after deadline ({formatDate(refundTarget.deadline)})</span>
+              </div>
+            )}
             <Button
               className="mt-5 w-full"
               variant="orange"
               size="lg"
               onClick={handleRefund}
-              disabled={busy}
+              disabled={busy || new Date(refundTarget.deadline).getTime() > Date.now()}
             >
               {busy ? "Confirming refund..." : "Close & refund remaining"}
             </Button>

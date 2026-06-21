@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Check,
   ChevronDown,
   CircleUserRound,
+  Copy,
   LogOut,
   Menu,
   RotateCcw,
@@ -12,12 +14,12 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useApi } from "@/lib/hooks/use-api";
+import type { ActiveUser } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
 import { cn, shortAddress } from "@/lib/utils";
 
 const publicLinks = [
@@ -26,9 +28,14 @@ const publicLinks = [
   { href: "/#for-brands", label: "For brands" },
 ];
 
-const memberLinks = [
+const brandLinks = [
   { href: "/explore", label: "Explore" },
   { href: "/brand", label: "My campaigns" },
+  { href: "/activity", label: "Activity" },
+];
+
+const clipperLinks = [
+  { href: "/explore", label: "Explore" },
   { href: "/clipper", label: "My submissions" },
   { href: "/activity", label: "Activity" },
 ];
@@ -42,41 +49,99 @@ const adminLinks = [
 export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
-  const { login, logout, linkWallet, authenticated, getAccessToken } = usePrivy();
-  const { data: activeUser, error, mutate } = useApi<any>("/api/users/me");
+  const {
+    ready,
+    user,
+    login,
+    logout,
+    authenticated,
+    getAccessToken,
+  } = usePrivy();
+  const { data: activeUser, mutate } =
+    useApi<ActiveUser>(
+      ready && authenticated ? "/api/users/me" : null,
+    );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const syncedPrivyUserId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (authenticated && error?.status === 404) {
-      (async () => {
-        try {
-          const token = await getAccessToken();
-          if (!token) return;
-          await fetch("/api/auth/sync", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          mutate();
-        } catch (err) {
-          console.error("Failed to sync auth:", err);
-        }
-      })();
+    if (!ready || !authenticated || !user?.id) {
+      syncedPrivyUserId.current = null;
+      return;
     }
-  }, [authenticated, error, getAccessToken, mutate]);
+
+    if (syncedPrivyUserId.current === user.id) return;
+    syncedPrivyUserId.current = user.id;
+
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const response = await fetch("/api/auth/sync", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          throw new Error("Failed to synchronize account role");
+        }
+        await mutate();
+        router.refresh();
+      } catch (syncError) {
+        syncedPrivyUserId.current = null;
+        console.error("Failed to sync auth:", syncError);
+      }
+    })();
+  }, [
+    authenticated,
+    getAccessToken,
+    mutate,
+    ready,
+    router,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    if (
+      authenticated &&
+      activeUser &&
+      activeUser.role === null &&
+      pathname !== "/onboarding"
+    ) {
+      router.replace("/onboarding");
+    }
+  }, [activeUser, authenticated, pathname, router]);
 
   const isAdminArea = pathname.startsWith("/admin");
   const links =
     activeUser?.role === "admin"
       ? adminLinks
-      : activeUser
-        ? memberLinks
+      : activeUser?.role === "brand"
+        ? brandLinks
+        : activeUser?.role === "clipper"
+          ? clipperLinks
         : publicLinks;
 
   async function signOut() {
-    await logout();
-    setAccountOpen(false);
-    router.push("/");
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      await logout();
+      await mutate(undefined, { revalidate: false });
+      setAccountOpen(false);
+      setMobileOpen(false);
+      router.replace("/");
+      router.refresh();
+    }
+  }
+
+  async function copyWalletAddress() {
+    if (!activeUser?.walletAddress) return;
+
+    await navigator.clipboard.writeText(activeUser.walletAddress);
+    setCopiedAddress(true);
+    window.setTimeout(() => setCopiedAddress(false), 1800);
   }
 
   return (
@@ -84,7 +149,7 @@ export function SiteHeader() {
       <div className="border-b-2 border-ink bg-blue px-4 py-2 text-white">
         <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center text-[10px] font-black uppercase tracking-[0.12em] sm:text-xs">
           <span className="h-2 w-2 animate-pulse rounded-full bg-lime" />
-          Privy Auth · Base Sepolia · Campaign data still mocked
+          Privy Auth · Base Sepolia · Fully Integrated Onchain
         </div>
       </div>
       <header
@@ -170,7 +235,9 @@ export function SiteHeader() {
                       {activeUser.displayName}
                     </span>
                     <span className="block text-[9px] font-bold text-ink/50">
-                      {shortAddress(activeUser.walletAddress)}
+                      {activeUser.walletAddress
+                        ? shortAddress(activeUser.walletAddress)
+                        : "No wallet"}
                     </span>
                   </span>
                   <ChevronDown size={14} />
@@ -189,7 +256,9 @@ export function SiteHeader() {
                     <p className="mt-1 text-[9px] font-bold uppercase text-ink/45">
                       {activeUser.role === "admin"
                         ? "Clipfun administrator"
-                        : "Marketplace member"}
+                        : activeUser.role === null
+                          ? "Onboarding required"
+                          : `${activeUser.role} account`}
                     </p>
                   </div>
                 </div>
@@ -204,14 +273,24 @@ export function SiteHeader() {
                     </Link>
                   )}
                   <Link
-                    href={activeUser.role === "admin" ? "/explore" : "/clipper"}
+                    href={
+                      activeUser.role === "admin"
+                        ? "/explore"
+                        : activeUser.role === null
+                          ? "/onboarding"
+                          : activeUser.role === "brand"
+                            ? "/brand"
+                            : "/clipper"
+                    }
                     onClick={() => setAccountOpen(false)}
                     className="flex items-center gap-2 p-2 text-[10px] font-black uppercase hover:bg-cream"
                   >
                     <CircleUserRound size={14} />
                     {activeUser.role === "admin"
                       ? "Open marketplace"
-                      : "Private dashboard"}
+                      : activeUser.role === null
+                        ? "Choose account type"
+                        : "Private dashboard"}
                   </Link>
                   <Link
                     href={`/profile/${activeUser.id}`}
@@ -221,24 +300,39 @@ export function SiteHeader() {
                     <CircleUserRound size={14} />
                     Public profile
                   </Link>
-                  <div className="flex items-center gap-2 p-2 text-[10px] font-black uppercase">
-                    <WalletCards size={14} /> {shortAddress(activeUser.walletAddress)}
-                  </div>
-                  <button
-                    onClick={() => {
-                      linkWallet();
-                      setAccountOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2 p-2 text-[10px] font-black uppercase text-blue hover:bg-cream"
-                  >
-                    <WalletCards size={14} /> Link external wallet
-                  </button>
+                  {activeUser.walletAddress ? (
+                    <button
+                      type="button"
+                      onClick={copyWalletAddress}
+                      className="flex w-full items-center gap-2 p-2 text-left text-[10px] font-black uppercase hover:bg-cream"
+                      title={activeUser.walletAddress}
+                    >
+                      <WalletCards size={14} />
+                      <span className="flex-1">
+                        {shortAddress(activeUser.walletAddress)}
+                      </span>
+                      {copiedAddress ? (
+                        <>
+                          <Check size={13} className="text-blue" />
+                          <span className="text-blue">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={13} />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 p-2 text-[10px] font-black uppercase">
+                      <WalletCards size={14} /> No wallet linked
+                    </div>
+                  )}
                 </div>
                 <div className="border-t border-ink/20 pt-2">
                   <button
                     onClick={async () => {
-                      await logout();
-                      setAccountOpen(false);
+                      await signOut();
                       login();
                     }}
                     className="flex w-full items-center gap-2 p-2 text-[10px] font-black uppercase text-blue hover:bg-cream"

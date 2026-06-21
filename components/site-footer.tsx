@@ -5,8 +5,8 @@ export function SiteFooter() {
     <footer className="border-t-2 border-ink bg-ink text-white">
       <div className="ticker border-b border-white/20 py-3 text-xs font-black uppercase tracking-[0.22em]">
         <div>
-          <span>Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ </span>
-          <span>Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ </span>
+          <span>Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ </span>
+          <span>Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ Funded campaigns ✦ Creator rewards ✦ Onchain proof ✦ </span>
         </div>
       </div>
       <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[1.4fr_1fr_1fr] md:px-6">

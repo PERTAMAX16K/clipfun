@@ -15,7 +15,7 @@ import {
 /*  Enums                                                              */
 /* ------------------------------------------------------------------ */
 
-export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+export const userRoleEnum = pgEnum("user_role", ["clipper", "brand", "admin"]);
 
 export const socialProviderEnum = pgEnum("social_provider", [
   "youtube",
@@ -80,8 +80,9 @@ export const users = pgTable(
     walletAddress: varchar("wallet_address", { length: 42 }),
     displayName: text("display_name").notNull().default("Clipfun User"),
     avatar: text("avatar_url"),
-    role: userRoleEnum("role").notNull().default("user"),
+    role: userRoleEnum("role"),
     bio: text("bio"),
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

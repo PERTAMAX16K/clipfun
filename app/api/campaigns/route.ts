@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, users, submissions } from "@/db/schema";
-import { requireAuth } from "@/lib/server/auth";
+import { requireAuth, requireBrand } from "@/lib/server/auth";
 import { createCampaignSchema } from "@/lib/validations";
 
 function generateCampaignCode(): string {
@@ -22,7 +22,7 @@ const VISUALS = ["blue", "orange", "lime", "purple"] as const;
 export async function POST(request: NextRequest) {
   let currentUser;
   try {
-    currentUser = await requireAuth(request);
+    currentUser = await requireBrand(request);
   } catch (error) {
     if (error instanceof NextResponse) return error;
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

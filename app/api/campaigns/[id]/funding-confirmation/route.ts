@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, transactions } from "@/db/schema";
-import { requireAuth } from "@/lib/server/auth";
+import { requireBrand } from "@/lib/server/auth";
 import { fundingConfirmationSchema } from "@/lib/validations";
+import { createPublicClient, http, decodeEventLog } from "viem";
+import { baseSepolia } from "viem/chains";
+import { campaignEscrowAbi } from "@/lib/contracts/campaign-escrow";
 
 /**
  * POST /api/campaigns/:id/funding-confirmation
@@ -15,11 +18,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
+  try {
+    const { id } = await params;
 
   let currentUser;
   try {
-    currentUser = await requireAuth(request);
+    currentUser = await requireBrand(request);
   } catch (error) {
     if (error instanceof NextResponse) return error;
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -59,8 +63,55 @@ export async function POST(
     );
   }
 
-  // TODO: In Tahap 6, verify the transaction receipt on-chain via Viem
-  // For now, trust the client-provided txHash
+  // Verify the transaction receipt on-chain via Viem
+  const client = createPublicClient({
+    chain: baseSepolia,
+    transport: http(),
+  });
+
+  let receipt;
+  let attempts = 0;
+  while (attempts < 5) {
+    try {
+      receipt = await client.getTransactionReceipt({ hash: parsed.data.txHash as `0x${string}` });
+      if (receipt) break;
+    } catch (err) {
+      attempts++;
+      if (attempts >= 5) {
+        return NextResponse.json({ error: "Failed to fetch transaction receipt after 5 attempts" }, { status: 400 });
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  if (!receipt) {
+    return NextResponse.json({ error: "Transaction receipt is empty" }, { status: 400 });
+  }
+
+  if (receipt.status !== "success") {
+    return NextResponse.json({ error: "Transaction reverted onchain" }, { status: 400 });
+  }
+
+  let foundEvent = false;
+  for (const log of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: campaignEscrowAbi,
+        data: log.data,
+        topics: log.topics,
+      });
+      if (decoded.eventName === "CampaignCreated") {
+        foundEvent = true;
+        break;
+      }
+    } catch {
+      // ignore decode error for other logs
+    }
+  }
+
+  if (!foundEvent) {
+    return NextResponse.json({ error: "CampaignCreated event not found in transaction" }, { status: 400 });
+  }
 
   // Update campaign status to OPEN
   const [updated] = await db
@@ -84,5 +135,12 @@ export async function POST(
     status: "CONFIRMED",
   });
 
-  return NextResponse.json(updated);
+    return NextResponse.json(updated);
+  } catch (error: any) {
+    console.error("Unhandled API Error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error", message: error?.message || String(error) },
+      { status: 500 }
+    );
+  }
 }

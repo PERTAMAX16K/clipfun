@@ -11,12 +11,15 @@ import {
   Wallet,
 } from "lucide-react";
 import { CampaignCard } from "@/components/campaign-card";
+import { usePrivy } from "@privy-io/react-auth";
 import { useApi } from "@/lib/hooks/use-api";
-import type { Campaign } from "@/lib/types";
+import type { ActiveUser, Campaign } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
+  const { login, authenticated, ready } = usePrivy();
+  const { data: activeUser } = useApi<ActiveUser>(ready && authenticated ? "/api/users/me" : null);
   const { data: allCampaigns } = useApi<Campaign[]>("/api/campaigns");
   const featured = (allCampaigns || []).filter((item) => item.status === "OPEN").slice(0, 3);
 
@@ -45,9 +48,17 @@ export default function HomePage() {
                   Find a campaign <ArrowRight size={18} />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/brand/create">Launch a campaign</Link>
-              </Button>
+              {activeUser?.role !== "clipper" && (
+                authenticated ? (
+                  <Button asChild variant="outline" size="lg">
+                    <Link href="/brand/create">Launch a campaign</Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="lg" onClick={login}>
+                    Launch a campaign
+                  </Button>
+                )
+              )}
             </div>
             <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 border-t border-ink/25 pt-5 text-[10px] font-black uppercase tracking-wider">
               <span className="flex items-center gap-2">

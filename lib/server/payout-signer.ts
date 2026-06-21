@@ -26,15 +26,13 @@ const PAYOUT_TYPES = {
   ],
 } as const;
 
-// Nonce counter (in production, use DB or Redis)
-let nonceCounter = 0;
-
 interface PayoutParams {
   campaignId: number;
   submissionId: string;
   clipperWallet: `0x${string}`;
   rewardAmount: bigint;
   platformFee: bigint;
+  nonce: number;
 }
 
 interface PayoutSignatureResult {
@@ -57,12 +55,11 @@ export async function generatePayoutSignature(
 ): Promise<PayoutSignatureResult> {
   if (!PAYOUT_SIGNER_KEY) {
     // In development without a key, return a mock signature
-    const nonce = ++nonceCounter;
     const expiry = Math.floor(Date.now() / 1000) + 86400; // 24 hours
 
     return {
       signature: `0x${"00".repeat(65)}`, // Mock signature
-      nonce,
+      nonce: params.nonce,
       expiry,
       campaignId: params.campaignId,
       submissionId: params.submissionId,
@@ -76,7 +73,6 @@ export async function generatePayoutSignature(
     PAYOUT_SIGNER_KEY as `0x${string}`,
   );
 
-  const nonce = ++nonceCounter;
   const expiry = Math.floor(Date.now() / 1000) + 86400; // 24 hours
 
   // Convert submission UUID to bytes32
@@ -92,14 +88,14 @@ export async function generatePayoutSignature(
       clipperWallet: params.clipperWallet,
       rewardAmount: params.rewardAmount,
       platformFee: params.platformFee,
-      nonce: BigInt(nonce),
+      nonce: BigInt(params.nonce),
       expiry: BigInt(expiry),
     },
   });
 
   return {
     signature,
-    nonce,
+    nonce: params.nonce,
     expiry,
     campaignId: params.campaignId,
     submissionId: params.submissionId,

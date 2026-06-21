@@ -10,7 +10,7 @@ export interface AuthenticatedUser {
   walletAddress: string | null;
   displayName: string;
   avatar: string | null;
-  role: "user" | "admin";
+  role: "clipper" | "brand" | "admin" | null;
 }
 
 /**
@@ -21,12 +21,16 @@ export async function requireAuth(
   request: NextRequest,
 ): Promise<AuthenticatedUser> {
   let verified: VerifiedUser;
+  const authorization = request.headers.get("Authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    throw NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
-    verified = await verifyPrivyToken(
-      request.headers.get("Authorization"),
-    );
-  } catch {
+    verified = await verifyPrivyToken(authorization);
+  } catch (error) {
+    console.error("verifyPrivyToken error:", error);
     throw NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -65,6 +69,44 @@ export async function requireAdmin(
   if (user.role !== "admin") {
     throw NextResponse.json(
       { error: "Forbidden. Admin access required." },
+      { status: 403 },
+    );
+  }
+
+  return user;
+}
+
+/**
+ * Verify the request's auth token and ensure the user has brand role.
+ * Throws a NextResponse error if unauthorized or not a brand.
+ */
+export async function requireBrand(
+  request: NextRequest,
+): Promise<AuthenticatedUser> {
+  const user = await requireAuth(request);
+
+  if (user.role !== "brand") {
+    throw NextResponse.json(
+      { error: "Forbidden. Brand access required." },
+      { status: 403 },
+    );
+  }
+
+  return user;
+}
+
+/**
+ * Verify the request's auth token and ensure the user has clipper role.
+ * Throws a NextResponse error if unauthorized or not a clipper.
+ */
+export async function requireClipper(
+  request: NextRequest,
+): Promise<AuthenticatedUser> {
+  const user = await requireAuth(request);
+
+  if (user.role !== "clipper") {
+    throw NextResponse.json(
+      { error: "Forbidden. Clipper access required." },
       { status: 403 },
     );
   }
@@ -114,6 +156,56 @@ export function withAdmin<T>(
     } catch (error) {
       if (error instanceof NextResponse) return error;
       console.error("Admin middleware error:", error);
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 },
+      );
+    }
+  };
+}
+
+/**
+ * Wrapper for brand-only route handlers.
+ */
+export function withBrand<T>(
+  handler: (
+    request: NextRequest,
+    user: AuthenticatedUser,
+    ...args: unknown[]
+  ) => Promise<NextResponse<T>>,
+) {
+  return async (request: NextRequest, context?: unknown) => {
+    try {
+      const user = await requireBrand(request);
+      return await handler(request, user, context);
+    } catch (error) {
+      if (error instanceof NextResponse) return error;
+      console.error("Brand middleware error:", error);
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 },
+      );
+    }
+  };
+}
+
+/**
+ * Wrapper for clipper-only route handlers.
+ */
+export function withClipper<T>(
+  handler: (
+    request: NextRequest,
+    user: AuthenticatedUser,
+    ...args: unknown[]
+  ) => Promise<NextResponse<T>>,
+) {
+  return async (request: NextRequest, context?: unknown) => {
+    try {
+      const user = await requireClipper(request);
+      return await handler(request, user, context);
+    } catch (error) {
+      if (error instanceof NextResponse) return error;
+      console.error("Clipper middleware error:", error);
       return NextResponse.json(
         { error: "Internal server error" },
         { status: 500 },

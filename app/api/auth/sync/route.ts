@@ -73,19 +73,33 @@ export async function POST(request: NextRequest) {
         privyDid: verified.privyDid,
         walletAddress,
         displayName,
-        role: isAdmin ? "admin" : "user",
+        role: isAdmin ? "admin" : undefined,
       })
       .returning();
     user = inserted;
   }
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     id: user.id,
     privyDid: user.privyDid,
     walletAddress: user.walletAddress,
     displayName: user.displayName,
     avatar: user.avatar,
     role: user.role,
+    onboardedAt: user.onboardedAt,
     createdAt: user.createdAt,
   });
+
+  // Set role cookie for middleware route protection
+  if (user.role) {
+    response.cookies.set("x-user-role", user.role, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
+
+  return response;
 }

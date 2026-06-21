@@ -1,5 +1,8 @@
 import "@nomicfoundation/hardhat-toolbox";
 
+import dotenv from "dotenv";
+dotenv.config({ path: "../.env.local" });
+
 /** @type import('hardhat/config').HardhatUserConfig */
 export default {
   solidity: {
@@ -21,7 +24,7 @@ export default {
   networks: {
     baseSepolia: {
       url: "https://sepolia.base.org",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
+      accounts: process.env.PAYOUT_SIGNER_PRIVATE_KEY ? [process.env.PAYOUT_SIGNER_PRIVATE_KEY] : [],
     }
   }
 };

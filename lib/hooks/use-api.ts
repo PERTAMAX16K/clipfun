@@ -2,17 +2,23 @@ import useSWR, { SWRConfiguration } from "swr";
 import { usePrivySession } from "@/app/providers";
 import { useCallback } from "react";
 
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number;
-  info: any;
-  constructor(message: string, status: number, info: any) {
+  info: unknown;
+  constructor(message: string, status: number, info: unknown) {
     super(message);
     this.status = status;
     this.info = info;
   }
 }
 
-export function useApi<Data = any, Error = any>(
+export function getErrorMessage(error: unknown, fallback = "Something went wrong") {
+  return error instanceof Error ? error.message : fallback;
+}
+
+type JsonBody = unknown;
+
+export function useApi<Data = unknown, Error = ApiError>(
   key: string | null,
   config?: SWRConfiguration<Data, Error>
 ) {
@@ -31,7 +37,8 @@ export function useApi<Data = any, Error = any>(
     
     if (!res.ok) {
       const info = await res.json().catch(() => ({}));
-      throw new ApiError("An error occurred while fetching the data.", res.status, info);
+      const errorMsg = info?.error || info?.message || "An error occurred while fetching the data.";
+      throw new ApiError(errorMsg, res.status, info);
     }
 
     return res.json() as Promise<Data>;
@@ -40,12 +47,12 @@ export function useApi<Data = any, Error = any>(
   return useSWR<Data, Error>(key, fetcher, config);
 }
 
-export function useApiMutation<Data = any>() {
+export function useApiMutation<Data = unknown>() {
   const { getAccessToken } = usePrivySession();
 
   const mutate = useCallback(async (
     url: string, 
-    options: { method?: "POST" | "PUT" | "PATCH" | "DELETE", body?: any }
+    options: { method?: "POST" | "PUT" | "PATCH" | "DELETE", body?: JsonBody }
   ) => {
     const token = await getAccessToken();
     const headers: HeadersInit = {};
@@ -66,7 +73,8 @@ export function useApiMutation<Data = any>() {
 
     if (!res.ok) {
       const info = await res.json().catch(() => ({}));
-      throw new ApiError("An error occurred while modifying the data.", res.status, info);
+      const errorMsg = info?.error || info?.message || "An error occurred while modifying the data.";
+      throw new ApiError(errorMsg, res.status, info);
     }
 
     return res.json() as Promise<Data>;
