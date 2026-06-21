@@ -509,7 +509,7 @@ function BrandDashboardContent() {
                 </strong>
               </div>
               <div className="flex justify-between border-b border-ink/20 p-4 text-xs">
-                <span className="font-bold text-ink/50">Fee reserve (5%)</span>
+                <span className="font-bold text-ink/50">Platform fee (5%)</span>
                 <strong>
                   {formatUsdc(
                     fundTarget.rewardPerSubmission *

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   const data = parsed.data;
   const rewardPool = data.rewardPerSubmission * data.maxWinners;
-  const platformFee = Math.ceil(rewardPool * 0.05);
+  const platformFee = rewardPool * 0.05;
   const totalDeposit = rewardPool + platformFee;
 
   const [campaign] = await db

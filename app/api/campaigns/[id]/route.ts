@@ -115,7 +115,7 @@ export async function PATCH(
     const reward = data.rewardPerSubmission ?? existing.rewardPerSubmission;
     const winners = data.maxWinners ?? existing.maxWinners;
     const pool = reward * winners;
-    const fee = Math.ceil(pool * 0.05);
+    const fee = pool * 0.05;
 
     updateData.rewardPerSubmission = reward;
     updateData.maxWinners = winners;
