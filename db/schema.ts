@@ -9,6 +9,7 @@ import {
   uuid,
   varchar,
   index,
+  doublePrecision,
 } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ */
@@ -142,15 +143,13 @@ export const campaigns = pgTable(
     campaignCode: varchar("campaign_code", { length: 10 }).unique(),
     referenceAttachment: text("reference_attachment"),
     metadataHash: varchar("metadata_hash", { length: 66 }),
-    rewardPerSubmission: bigint("reward_per_submission", {
-      mode: "number",
-    }).notNull(),
+    rewardPerSubmission: doublePrecision("reward_per_submission").notNull(),
     maxWinners: integer("max_winners").notNull(),
     paidWinners: integer("paid_winners").notNull().default(0),
-    platformFee: bigint("platform_fee", { mode: "number" })
+    platformFee: doublePrecision("platform_fee")
       .notNull()
       .default(0),
-    totalDeposit: bigint("total_deposit", { mode: "number" })
+    totalDeposit: doublePrecision("total_deposit")
       .notNull()
       .default(0),
     deadline: timestamp("deadline", { withTimezone: true }).notNull(),
@@ -211,8 +210,8 @@ export const payoutAuthorizations = pgTable(
       .unique()
       .references(() => submissions.id),
     walletAddress: varchar("wallet_address", { length: 42 }).notNull(),
-    rewardAmount: bigint("reward_amount", { mode: "number" }).notNull(),
-    feeAmount: bigint("fee_amount", { mode: "number" }).notNull(),
+    rewardAmount: doublePrecision("reward_amount").notNull(),
+    feeAmount: doublePrecision("fee_amount").notNull(),
     nonce: bigint("nonce", { mode: "number" }).notNull(),
     expiry: timestamp("expiry", { withTimezone: true }).notNull(),
     signature: text("signature").notNull(),
@@ -236,7 +235,7 @@ export const transactions = pgTable(
     type: transactionTypeEnum("type").notNull(),
     campaignId: uuid("campaign_id").references(() => campaigns.id),
     userId: uuid("user_id").references(() => users.id),
-    amount: bigint("amount", { mode: "number" }).notNull(),
+    amount: doublePrecision("amount").notNull(),
     status: transactionStatusEnum("status").notNull().default("PENDING"),
     blockNumber: bigint("block_number", { mode: "number" }),
     createdAt: timestamp("created_at", { withTimezone: true })
