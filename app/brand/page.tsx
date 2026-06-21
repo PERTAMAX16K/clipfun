@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
+  Copy,
   CircleDollarSign,
   Clock3,
   ExternalLink,
@@ -21,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import type { ActiveUser, Campaign, Transaction } from "@/lib/types";
-import { formatDate, formatUsdc } from "@/lib/utils";
+import { formatDate, formatUsdc, shortAddress } from "@/lib/utils";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { createWalletClient, custom, publicActions, parseUnits, stringToHex, pad } from "viem";
 import { baseSepolia } from "viem/chains";
@@ -59,6 +60,7 @@ function BrandDashboardContent() {
   const [busy, setBusy] = useState(false);
   const isBusyRef = useRef(false);
   const [result, setResult] = useState<Transaction | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState(false);
 
   const stats = useMemo(() => {
     const open = brandCampaigns.filter((item) => item.status === "OPEN");
@@ -320,11 +322,11 @@ function BrandDashboardContent() {
 
   return (
     <>
-      <section className="border-b-2 border-ink bg-white">
+      <section className="border-b-2 border-ink bg-white overflow-hidden">
         <div className="page-shell flex flex-col justify-between gap-6 py-10 sm:flex-row sm:items-end">
-          <div>
+          <div className="min-w-0">
             <Badge tone="blue" className="mb-4">Brand workspace</Badge>
-            <h1 className="font-display text-5xl uppercase leading-none sm:text-7xl">
+            <h1 className="font-display text-4xl uppercase leading-[0.9] tracking-tight sm:text-7xl break-words break-all">
               Good morning,
               <br />
               <span className="font-editorial text-orange">
@@ -332,7 +334,7 @@ function BrandDashboardContent() {
               </span>
             </h1>
           </div>
-          <Button asChild size="lg" className="relative z-10 shadow-brutal">
+          <Button asChild size="lg" className="relative z-10 shadow-brutal w-full sm:w-auto">
             <Link href="/brand/create">
               <FilePlus2 size={18} /> Create campaign
             </Link>
@@ -393,9 +395,9 @@ function BrandDashboardContent() {
             return (
               <article
                 key={campaign.id}
-                className="grid border-2 border-ink bg-white shadow-brutal transition-all hover:shadow-brutal-lg md:grid-cols-[1fr_auto]"
+                className="grid border-2 border-ink bg-white shadow-brutal transition-all hover:shadow-brutal-lg md:grid-cols-[1fr_auto] min-w-0"
               >
-                <div className="p-6 sm:p-8">
+                <div className="p-6 sm:p-8 min-w-0">
                   <div className="mb-4 flex flex-wrap items-center gap-3">
                     <Badge
                       tone={
@@ -410,27 +412,27 @@ function BrandDashboardContent() {
                     </Badge>
                     <Badge tone="cream">{campaign.campaignCode}</Badge>
                   </div>
-                  <h3 className="font-display text-3xl uppercase leading-none tracking-tight sm:text-4xl">
+                  <h3 className="font-display text-3xl uppercase leading-none tracking-tight sm:text-4xl truncate">
                     {campaign.title}
                   </h3>
-                  <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65">
+                  <p className="mt-4 max-w-2xl text-sm leading-7 text-ink/65 truncate">
                     {campaign.summary}
                   </p>
                   <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-[10px] font-black uppercase tracking-wider text-ink/60">
-                    <span className="flex items-center gap-1.5"><CircleDollarSign size={14} className="text-blue" /> {formatUsdc(campaign.rewardPerSubmission)} / clip</span>
-                    <span className="flex items-center gap-1.5"><Users size={14} className="text-blue" /> {campaign.submissionCount} submissions</span>
-                    <span className="flex items-center gap-1.5"><Check size={14} className="text-blue" /> {remaining} spots remaining</span>
-                    <span className="flex items-center gap-1.5"><Clock3 size={14} className="text-blue" /> Ends {formatDate(campaign.deadline)}</span>
+                    <span className="flex items-center gap-1.5"><CircleDollarSign size={14} className="text-blue shrink-0" /> {formatUsdc(campaign.rewardPerSubmission)} / clip</span>
+                    <span className="flex items-center gap-1.5"><Users size={14} className="text-blue shrink-0" /> {campaign.submissionCount} submissions</span>
+                    <span className="flex items-center gap-1.5"><Check size={14} className="text-blue shrink-0" /> {remaining} spots remaining</span>
+                    <span className="flex items-center gap-1.5"><Clock3 size={14} className="text-blue shrink-0" /> Ends {formatDate(campaign.deadline)}</span>
                   </div>
                 </div>
-                <div className="flex min-w-64 flex-col justify-center gap-3 border-t-2 border-ink bg-cream p-6 md:border-l-2 md:border-t-0">
+                <div className="flex flex-col justify-center gap-3 border-t-2 border-ink bg-cream p-6 md:w-64 md:border-l-2 md:border-t-0">
                   {campaign.status === "AWAITING_FUNDING" && (
                     <Button
                       onClick={() => {
                         setFundTarget(campaign);
                         setResult(null);
                       }}
-                      className="shadow-brutal-sm relative"
+                      className="shadow-brutal-sm relative w-full"
                       disabled={busy}
                     >
                       <Wallet size={16} /> Fund & publish
@@ -443,13 +445,13 @@ function BrandDashboardContent() {
                         setRefundTarget(campaign);
                         setResult(null);
                       }}
-                      className="shadow-brutal-sm"
+                      className="shadow-brutal-sm w-full"
                       disabled={busy}
                     >
                       Close & refund
                     </Button>
                   )}
-                  <Button asChild variant="ghost" className="hover:underline">
+                  <Button asChild variant="ghost" className="hover:underline w-full">
                     <Link href={`/campaigns/${campaign.id}`}>
                       View campaign <ArrowRight size={15} />
                     </Link>

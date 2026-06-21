@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   BadgeCheck,
   Check,
+  Copy,
   CircleDollarSign,
   ExternalLink,
   Instagram,
@@ -79,6 +80,7 @@ function ClipperDashboardContent() {
     "confirm",
   );
   const [claimResult, setClaimResult] = useState<Transaction | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [provider, setProvider] = useState<SocialProvider>("instagram");
   const [username, setUsername] = useState("");
@@ -237,12 +239,12 @@ function ClipperDashboardContent() {
 
   return (
     <>
-      <section className="border-b-2 border-ink bg-cream">
+      <section className="border-b-2 border-ink bg-cream overflow-hidden">
         <div className="page-shell relative grid min-h-[320px] gap-8 border-x-2 border-ink px-6 py-12 md:grid-cols-[1fr_auto] md:items-end sm:px-12">
           <div className="absolute inset-0 dot-grid opacity-30 mix-blend-multiply" />
-          <div className="relative z-10">
+          <div className="relative z-10 min-w-0">
             <Badge tone="blue" className="mb-6 shadow-brutal-sm">Creator workspace</Badge>
-            <h1 className="font-display text-6xl uppercase leading-[0.85] tracking-[-0.04em] sm:text-8xl">
+            <h1 className="font-display text-4xl uppercase leading-[0.9] tracking-tight sm:text-8xl break-words break-all">
               Keep clipping,
               <br />
               <span className="font-editorial text-blue">{clipper?.displayName ?? "Creator"}.</span>
@@ -252,7 +254,7 @@ function ClipperDashboardContent() {
               profiles ready for the next brief.
             </p>
           </div>
-          <Button asChild size="lg" variant="black" className="relative z-10 shadow-brutal">
+          <Button asChild size="lg" variant="black" className="relative z-10 shadow-brutal w-full sm:w-auto">
             <Link href="/explore">Find a campaign</Link>
           </Button>
         </div>
@@ -260,7 +262,7 @@ function ClipperDashboardContent() {
 
       <section className="page-shell py-8">
         <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-          <div>
+          <div className="min-w-0">
             <div className="mb-10 grid gap-5 sm:grid-cols-3">
               {[
                 {
@@ -377,17 +379,17 @@ function ClipperDashboardContent() {
             </div>
           </div>
 
-          <aside className="space-y-8">
+          <aside className="space-y-8 min-w-0">
             <div className="border-2 border-ink bg-blue p-7 text-white shadow-brutal-lg">
               <div className="flex items-center gap-4">
-                <span className="grid h-16 w-16 place-items-center border-2 border-ink bg-lime font-display text-2xl text-ink shadow-brutal-sm">
+                <span className="grid h-16 w-16 shrink-0 place-items-center border-2 border-ink bg-lime font-display text-2xl text-ink shadow-brutal-sm">
                   {clipper?.avatar ?? "CF"}
                 </span>
-                <div>
-                  <p className="font-display text-2xl uppercase tracking-tight">
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-2xl uppercase tracking-tight break-words break-all">
                     {clipper?.displayName ?? "Creator"}
                   </p>
-                  <p className="text-xs font-bold tracking-widest text-white/70">{clipper?.handle ?? ""}</p>
+                  <p className="text-xs font-bold tracking-widest text-white/70 truncate">{clipper?.handle ?? ""}</p>
                 </div>
               </div>
               <p className="mt-6 text-sm leading-6 text-white/80">{clipper?.bio}</p>
@@ -395,9 +397,24 @@ function ClipperDashboardContent() {
                 <p className="text-[10px] font-black uppercase tracking-widest text-blue">
                   Active payout wallet
                 </p>
-                <p className="mt-1 font-mono text-xs font-bold">
-                  {shortAddress(clipper?.walletAddress ?? "")}
-                </p>
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="font-mono text-xs font-bold">
+                    {shortAddress(clipper?.walletAddress ?? "")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!clipper?.walletAddress) return;
+                      navigator.clipboard.writeText(clipper.walletAddress);
+                      setCopiedAddress(true);
+                      setTimeout(() => setCopiedAddress(false), 1800);
+                    }}
+                    className="flex items-center gap-1.5 text-[9px] font-black uppercase text-blue hover:underline"
+                  >
+                    {copiedAddress ? <Check size={12} /> : <Copy size={12} />}
+                    {copiedAddress ? "Copied" : "Copy"}
+                  </button>
+                </div>
               </div>
             </div>
 

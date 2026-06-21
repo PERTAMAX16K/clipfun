@@ -147,9 +147,9 @@ export function SiteHeader() {
   return (
     <>
       <div className="border-b-2 border-ink bg-blue px-4 py-2 text-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center text-[10px] font-black uppercase tracking-[0.12em] sm:text-xs">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-lime" />
-          Privy Auth · Base Sepolia · Fully Integrated Onchain
+        <div className="mx-auto flex flex-wrap max-w-7xl items-center justify-center gap-2 text-center text-[10px] font-black uppercase tracking-[0.12em] sm:text-xs">
+          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-lime" />
+          <span className="flex-1 break-words min-w-0">Privy Auth · Base Sepolia · Fully Integrated Onchain</span>
         </div>
       </div>
       <header
@@ -381,14 +381,24 @@ export function SiteHeader() {
           </div>
           {activeUser ? (
             <div className="mt-5 flex items-center gap-3 border-2 border-ink bg-white p-3 shadow-brutal">
-              <span className="grid h-11 w-11 place-items-center bg-blue text-xs font-black text-white">
+              <span className="grid h-11 w-11 place-items-center bg-blue text-xs font-black text-white shrink-0">
                 {activeUser.avatar}
               </span>
-              <div>
-                <p className="font-black">{activeUser.displayName}</p>
+              <div className="min-w-0 flex-1">
+                <p className="font-black truncate">{activeUser.displayName}</p>
                 <p className="text-xs uppercase text-ink/50">{activeUser.role}</p>
               </div>
-              <WalletCards className="ml-auto" size={19} />
+              {activeUser.walletAddress ? (
+                <button
+                  onClick={copyWalletAddress}
+                  className="ml-auto flex shrink-0 flex-col items-center gap-1 text-[10px] font-black uppercase text-blue"
+                >
+                  {copiedAddress ? <Check size={18} /> : <Copy size={18} />}
+                  <span>{copiedAddress ? "Copied" : "Copy"}</span>
+                </button>
+              ) : (
+                <WalletCards className="ml-auto shrink-0" size={19} />
+              )}
             </div>
           ) : (
             <Button
