@@ -211,44 +211,48 @@ lib/
 - npm
 - A Privy application for real authentication
 
-### Installation
+### Installation & Setup
 
+**1. Install dependencies:**
 ```bash
 git clone https://github.com/PERTAMAX16K/clipfun.git
 cd clipfun
 npm install
 ```
 
+**2. Setup environment variables:**
 Copy the example environment configuration:
-
 ```bash
 cp .env.example .env.local
 ```
+*(On Windows PowerShell, use: `Copy-Item .env.example .env.local`)*
 
-On Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env.local
-```
-
-Configure the public Privy identifiers:
-
+Open `.env.local` and configure the required variables:
 ```env
-NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
-NEXT_PUBLIC_PRIVY_CLIENT_ID=your_privy_client_id
-NEXT_PUBLIC_ADMIN_PRIVY_USER_IDS=did:privy:admin_user_id
+# Database
+DATABASE_URL="your_postgresql_database_url"
+
+# Privy Authentication
+NEXT_PUBLIC_PRIVY_APP_ID="your_privy_app_id"
+PRIVY_APP_ID="your_privy_app_id"
+PRIVY_APP_SECRET="your_privy_app_secret"
+
+# Base Sepolia Smart Contract
+NEXT_PUBLIC_CAMPAIGN_ESCROW_ADDRESS="your_deployed_escrow_address"
+PAYOUT_SIGNER_PRIVATE_KEY="your_admin_wallet_private_key"
 ```
 
-`NEXT_PUBLIC_ADMIN_PRIVY_USER_IDS` is only a temporary development mechanism.
-Do not treat a client-side allowlist as production authorization.
+**3. Initialize the database:**
+Push the Drizzle ORM schema to your PostgreSQL database:
+```bash
+npm run db:push
+```
 
-Start the development server:
-
+**4. Start the development server:**
 ```bash
 npm run dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Quality checks
 
@@ -276,10 +280,10 @@ can be longer on resource-constrained machines.
 1. Complete Privy dashboard configuration and validate embedded wallets. **(Done)**
 2. Add PostgreSQL, Drizzle ORM, and server-verified user synchronization. **(Done)**
 3. Implement and test `CampaignEscrow.sol` with Foundry/Hardhat. **(Done)**
-4. Deploy the escrow contract and mock USDC workflow to Base Sepolia. **(Ready)**
+4. Deploy the escrow contract and mock USDC workflow to Base Sepolia. **(Done)**
 5. Replace campaign funding, payout claims, and refunds with Viem transactions. **(Done)**
 6. Add backend API verification of onchain transactions. **(Done)**
-7. Deploy the web application and managed PostgreSQL environment.
+7. Deploy the web application and managed PostgreSQL environment. **(In Progress)**
 
 ## Network target
 
